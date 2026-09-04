@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useAppStore } from '@/store'
 import { getExecutionHostIdForWorktree } from '@/lib/worktree-runtime-owner'
 import { runtimeTargetForExecutionHostId, type RuntimeClientTarget } from './runtime-client-target'
@@ -10,7 +11,8 @@ import { runtimeTargetForExecutionHostId, type RuntimeClientTarget } from './run
 export function useWorktreeRuntimeTarget(
   worktreeId: string | null | undefined
 ): RuntimeClientTarget | null {
-  return useAppStore((state) =>
-    runtimeTargetForExecutionHostId(getExecutionHostIdForWorktree(state, worktreeId))
-  )
+  // Select the host id, then derive: returning the object straight from the selector
+  // gave it a new identity on every store write, re-rendering every consumer.
+  const hostId = useAppStore((state) => getExecutionHostIdForWorktree(state, worktreeId))
+  return useMemo(() => runtimeTargetForExecutionHostId(hostId), [hostId])
 }
