@@ -20,6 +20,8 @@ export function buildManagedWorktreeCreateArgs(
   return {
     repoSelector: params.repo,
     name: params.name ?? '',
+    ...(params.workspaceKind ? { workspaceKind: params.workspaceKind } : {}),
+    ...(params.jjStartRevision ? { jjStartRevision: params.jjStartRevision } : {}),
     // Absent means the user typed the name, which must never be retired.
     ...(params.nameWasGenerated === true ? { nameWasGenerated: true } : {}),
     baseBranch: params.baseBranch,

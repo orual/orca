@@ -1,37 +1,34 @@
 import type { DetectedWorktreeListResult, Worktree } from '../../shared/worktree/types'
-import type { Repo } from '../../shared/repo-types'
+import type { Repo, RepoKind } from '../../shared/repo-types'
+import { getRepoKind } from '../../shared/repo-kind'
 import type { RuntimeWorktreeListResult } from '../../shared/runtime-types'
-import { getRepoExecutionHostId, type ExecutionHostId } from '../../shared/execution-host'
+import type { ExecutionHostId } from '../../shared/execution-host'
 import { buildWorktreeListingPage } from './worktree-listing-host-scope'
-import { readWorktreeMetaForHost } from '../persistence/host-qualified-worktree-meta'
-import { getRepoOwnedWorktreeMeta } from '../worktree-metadata-ownership'
-import type { WorktreeMeta } from '../../shared/worktree/meta-types'
-import { isFolderRepo } from '../../shared/repo-kind'
-import {
-  applyMetadataFallbackVisibility,
-  buildKnownOrcaWorkspaceLayouts,
-  isLegacyRepoForExternalWorktreeVisibility,
-  toDetectedWorktree
-} from '../../shared/worktree/ownership'
-import { projectResolvedWorktreeLineage } from '../../shared/resolved-worktree-lineage'
-import {
-  createWorktreeVisibilitySourceMatcher,
-  resolveCustomWorktreeVisibilitySources,
-  type WorktreeVisibilitySourceMatcher
-} from '../../shared/worktree/visibility-sources'
-import { mergeWorktree } from '../ipc/worktree-logic'
-import { pruneLineageForMissingRepoWorktrees } from '../worktree-lineage-pruning'
-import { pruneMetadataMissingFromAuthoritativeLocalScan } from '../ipc/worktrees/listing/authoritative-local-worktree-metadata-pruning'
-import type { NativeLocalWorktreeMetadataScanExpectation } from '../persistence/tracking-repos/missing-local-worktree-metadata-pruning'
-import { getLocalWorktreeScanGeneration } from '../local-worktree-scan-generation'
 import { getLocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 import type { Store } from '../persistence'
 import type { RuntimeStore } from './runtime-store-contract'
 import type { RuntimeWorktreeScanResult } from './repo-worktree-resolution-scan'
-import { listRuntimeFolderWorkspaces } from './runtime-worktree-filesystem'
 import type { ResolvedWorktree } from './runtime-worktree-path-identity'
-import { resolveConfiguredWorktreeBasePaths } from '../../shared/worktree/configured-worktree-base-path'
+import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+import type { NativeLocalWorktreeMetadataScanExpectation } from '../persistence/tracking-repos/missing-local-worktree-metadata-pruning'
+import type { WorktreeVisibilitySourceMatcher } from '../../shared/worktree/visibility-sources'
 import { getRetiredNameRegistryForRepo } from '../worktree-name-retirement'
+import { listDetectedManagedWorktrees } from './runtime-managed-worktree-detected-listing'
+import {
+  buildKnownOrcaWorkspaceLayouts,
+  isLegacyRepoForExternalWorktreeVisibility,
+  toDetectedWorktree
+} from '../../shared/worktree/ownership'
+import {
+  createWorktreeVisibilitySourceMatcher,
+  resolveCustomWorktreeVisibilitySources
+} from '../../shared/worktree/visibility-sources'
+import { resolveConfiguredWorktreeBasePaths } from '../../shared/worktree/configured-worktree-base-path'
+
+export type RuntimeWorktreeListingOptions = {
+  /** Internal caller projection; never populated from RPC params or persisted state. */
+  excludeRepoKinds?: readonly RepoKind[]
+}
 
 type Dependencies = {
   getStore(): RuntimeStore | null
@@ -74,15 +71,23 @@ export class RuntimeManagedWorktreeQueries {
   async list(
     repoSelector: string | undefined,
     limit: number,
-    sourceDefaultsSupported = true
+    sourceDefaultsSupported = true,
+    options?: RuntimeWorktreeListingOptions
   ): Promise<RuntimeWorktreeListResult> {
     if (!Number.isInteger(limit) || limit <= 0) {
       throw new Error('invalid_limit')
     }
     const resolved = await this.deps.listResolved()
     const repoId = repoSelector ? (await this.deps.resolveRepo(repoSelector)).id : null
+    const excludedKinds = new Set(options?.excludeRepoKinds ?? [])
+    const reposById = new Map(
+      (this.deps.getStore()?.getRepos() ?? []).map((repo) => [repo.id, repo])
+    )
+    const visibleResolved = resolved.filter(
+      (worktree) => !excludedKinds.has(getRepoKind(reposById.get(worktree.repoId) ?? {}))
+    )
     const pathsByRepo = new Map<string, string[]>()
-    for (const worktree of resolved) {
+    for (const worktree of visibleResolved) {
       const paths = pathsByRepo.get(worktree.repoId) ?? []
       paths.push(worktree.path)
       pathsByRepo.set(worktree.repoId, paths)
@@ -98,7 +103,7 @@ export class RuntimeManagedWorktreeQueries {
         )
       ])
     )
-    const worktrees = resolved.filter(
+    const worktrees = visibleResolved.filter(
       (worktree) =>
         (!repoId || worktree.repoId === repoId) &&
         this.isVisible(worktree, matchers.get(worktree.repoId), sourceDefaultsSupported)
@@ -124,98 +129,24 @@ export class RuntimeManagedWorktreeQueries {
 
   async listDetected(
     repo: Repo,
-    sourceDefaultsSupported = true
+    sourceDefaultsSupported = true,
+    options?: RuntimeWorktreeListingOptions
   ): Promise<DetectedWorktreeListResult> {
-    const store = this.deps.getStore()
-    if (!store) {
-      throw new Error('runtime_unavailable')
+    if (options?.excludeRepoKinds?.includes(getRepoKind(repo))) {
+      return { repoId: repo.id, authoritative: false, source: 'metadata-fallback', worktrees: [] }
     }
-    const settings = store.getSettings()
-    const visibilityDefaults = this.visibilityDefaults(sourceDefaultsSupported)
-    const visibilitySettings = { ...settings, worktreeVisibilityDefaults: visibilityDefaults }
-    if (isFolderRepo(repo)) {
-      const worktrees = listRuntimeFolderWorkspaces(store, repo)
-      const metaById = store.getAllWorktreeMeta()
-      const repoOwnerCount = store.getRepos().filter((candidate) => candidate.id === repo.id).length
-      const matcher = createWorktreeVisibilitySourceMatcher(
-        [repo.path, ...worktrees.map((worktree) => worktree.path)],
-        resolveCustomWorktreeVisibilitySources(repo, visibilityDefaults),
-        resolveConfiguredWorktreeBasePaths(repo)
-      )
-      const detected = worktrees.map((worktree) =>
-        this.toDetected(
-          repo,
-          worktree,
-          matcher,
-          sourceDefaultsSupported,
-          visibilitySettings,
-          getRepoOwnedWorktreeMeta(repo, worktree.id, metaById, repoOwnerCount) ?? null
-        )
-      )
-      return {
-        repoId: repo.id,
-        authoritative: true,
-        source: 'git',
-        worktrees: projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
-      }
-    }
-    // Why capture before the scan: listing can mutate metadata synchronously before its first
-    // await, and the prune revalidates against the rows as they stood when the scan was issued.
-    const metadataScanGeneration = getLocalWorktreeScanGeneration(repo.id)
-    const metadataPruneExpectation = captureLocalMetadataPruneExpectation(store, repo)
-    let scan: RuntimeWorktreeScanResult
-    try {
-      scan = await this.deps.scanRepo(repo)
-    } catch {
-      scan = { ok: false, worktrees: [] }
-    }
-    if (scan.ok) {
-      // Why the runtime sweeps too: the desktop listing that used to own this runs off `ipcMain`,
-      // so a headless host -- which has no renderer -- never pruned its own repos' rows (#17776).
-      if (metadataPruneExpectation) {
-        await pruneMetadataMissingFromAuthoritativeLocalScan({
-          store: store as unknown as Store,
-          repo,
-          gitWorktrees: scan.worktrees,
-          scan: metadataPruneExpectation,
-          scanGeneration: metadataScanGeneration
-        })
-      }
-      pruneLineageForMissingRepoWorktrees(store as unknown as Store, repo, scan.worktrees)
-    }
-    const matcher = createWorktreeVisibilitySourceMatcher(
-      [repo.path, ...scan.worktrees.map((worktree) => worktree.path)],
-      resolveCustomWorktreeVisibilitySources(repo, visibilityDefaults),
-      resolveConfiguredWorktreeBasePaths(repo)
+    return listDetectedManagedWorktrees(
+      {
+        getStore: this.deps.getStore,
+        scanRepo: this.deps.scanRepo,
+        captureLocalMetadataPruneExpectation,
+        visibilityDefaults: (supported, settings) => this.visibilityDefaults(supported, settings),
+        toDetected: (targetRepo, worktree, matcher, supported, settings, meta) =>
+          this.toDetected(targetRepo, worktree, matcher, supported, settings, meta)
+      },
+      repo,
+      sourceDefaultsSupported
     )
-    const expectedHostId = getRepoExecutionHostId(repo)
-    const repoOwnerCount = store.getRepos().filter((candidate) => candidate.id === repo.id).length
-    const metaById = store.getAllWorktreeMeta()
-    const detected = scan.worktrees.map((gitWorktree) => {
-      const id = `${repo.id}::${gitWorktree.path}`
-      const meta =
-        readWorktreeMetaForHost(store as unknown as Store, id, expectedHostId) ??
-        getRepoOwnedWorktreeMeta(repo, id, metaById, repoOwnerCount)
-      const worktree = {
-        ...mergeWorktree(repo.id, gitWorktree, meta, repo.displayName),
-        hostId: repoOwnerCount === 1 ? (meta?.hostId ?? expectedHostId) : expectedHostId
-      }
-      const result = this.toDetected(
-        repo,
-        worktree,
-        matcher,
-        sourceDefaultsSupported,
-        visibilitySettings,
-        meta ?? null
-      )
-      return scan.ok ? result : applyMetadataFallbackVisibility(result)
-    })
-    return {
-      repoId: repo.id,
-      authoritative: scan.ok,
-      source: scan.ok ? 'git' : 'metadata-fallback',
-      worktrees: projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
-    }
   }
 
   isVisible(
@@ -289,7 +220,10 @@ export class RuntimeManagedWorktreeQueries {
     })
   }
 
-  async listRetiredNames(repoSelector: string): Promise<{
+  async listRetiredNames(
+    repoSelector: string,
+    options?: RuntimeWorktreeListingOptions
+  ): Promise<{
     retiredNamesByRepo: Record<string, readonly string[]>
     retiredNameTiersByRepo: Record<string, number>
   }> {
@@ -298,6 +232,9 @@ export class RuntimeManagedWorktreeQueries {
       return { retiredNamesByRepo: {}, retiredNameTiersByRepo: {} }
     }
     const repo = await this.deps.resolveRepo(repoSelector)
+    if (options?.excludeRepoKinds?.includes(getRepoKind(repo))) {
+      return { retiredNamesByRepo: {}, retiredNameTiersByRepo: {} }
+    }
     const settings = store.getSettings()
     const registry = await getRetiredNameRegistryForRepo(
       store as never,

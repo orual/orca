@@ -14,7 +14,7 @@ import {
 } from '../effective-hook-config'
 import { isENOENT } from '../ipc/filesystem-auth'
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import { inspectSetupScriptImportCandidates } from '../../shared/setup-script-imports'
 import { joinWorktreeRelativePath } from './runtime-relative-paths'
 
@@ -27,6 +27,14 @@ export class RuntimeRepositoryHooksCommands {
 
   async getRepoHooks(repoSelector: string) {
     const repo = await this.deps.resolveRepo(repoSelector)
+    if (!isGitRepoKind(repo)) {
+      return {
+        hasHooksFile: false,
+        hooks: null,
+        setupRunPolicy: getEffectiveSetupRunPolicy(repo),
+        source: null
+      }
+    }
     if (repo.connectionId) {
       const fsProvider = getSshFilesystemProvider(repo.connectionId)
       if (!fsProvider) {
@@ -70,7 +78,7 @@ export class RuntimeRepositoryHooksCommands {
 
   async checkRepoHooks(repoSelector: string) {
     const repo = await this.deps.resolveRepo(repoSelector)
-    if (isFolderRepo(repo)) {
+    if (isFolderRepo(repo) || !isGitRepoKind(repo)) {
       return { status: 'ok' as const, hasHooks: false, hooks: null, mayNeedUpdate: false }
     }
     if (repo.connectionId) {
@@ -110,7 +118,7 @@ export class RuntimeRepositoryHooksCommands {
 
   async inspectRepoSetupScriptImports(repoSelector: string) {
     const repo = await this.deps.resolveRepo(repoSelector)
-    if (isFolderRepo(repo)) {
+    if (isFolderRepo(repo) || !isGitRepoKind(repo)) {
       return []
     }
     return inspectSetupScriptImportCandidates(async (relativePath) => {

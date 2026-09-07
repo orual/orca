@@ -1,5 +1,5 @@
 import type { Store } from '../persistence'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import { readWorktreeMetaForHost } from '../persistence/host-qualified-worktree-meta'
 import type { Repo } from '../../shared/repo-types'
 import type { GitWorktreeInfo, Worktree } from '../../shared/worktree/types'
@@ -141,6 +141,10 @@ async function scanRepoWorkspaces(
     onErrors
   } = args
   const errors: WorkspaceCleanupScanResult['errors'] = []
+  // jj cleanup is intentionally deferred; never route it through Git worktree discovery.
+  if (!isGitRepoKind(repo) && !isFolderRepo(repo)) {
+    return { scannedAt, candidates: [], errors: [] }
+  }
   const repoIsFolder = isFolderRepo(repo)
   let route: WorkspaceCleanupGitRoute
   let gitWorktrees: GitWorktreeInfo[] = []

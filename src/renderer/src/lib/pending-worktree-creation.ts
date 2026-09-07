@@ -64,6 +64,8 @@ export type WorktreeCreationRequest = {
    *  local-vs-runtime progress behavior even if the focused runtime changes. */
   worktreeCreateProgressMode?: WorktreeCreationProgressMode
   name: string
+  workspaceKind?: 'jj'
+  jjStartRevision?: string
   /** True only when `name` came from the creature-name generator; gates host-side retirement. */
   nameWasGenerated?: boolean
   displayName?: string

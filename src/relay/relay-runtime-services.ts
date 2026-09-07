@@ -6,6 +6,7 @@ import { RelayContext, expandTilde } from './context'
 import { PtyHandler } from './pty-handler'
 import { FsHandler } from './fs-handler'
 import { GitHandler } from './git-handler'
+import { JjHandler } from './jj-handler'
 import { GitResponseStreamRegistry } from './git-response-stream'
 import { PreflightHandler } from './preflight-handler'
 import { ExternalAutomationsHandler } from './external-automations-handler'
@@ -27,6 +28,7 @@ export class RelayRuntimeServices {
   readonly ptySourcePublication: RelayPtySourcePublication
   readonly fsHandler: FsHandler
   readonly gitHandler: GitHandler
+  readonly jjHandler: JjHandler
   readonly skillInstallHandler: SkillInstallHandler
   private readonly aiVaultService: ReturnType<typeof createRelayAiVaultService> | null
   private readonly registeredHandlers: readonly unknown[]
@@ -68,6 +70,7 @@ export class RelayRuntimeServices {
       this.ptyHandler.shutdownForWorktreePath(rootPath)
     )
     this.gitHandler = new GitHandler(dispatcher, context, watchRegistry, responseStreams)
+    this.jjHandler = new JjHandler(dispatcher)
     const preflightHandler = new PreflightHandler(dispatcher)
     this.skillInstallHandler = new SkillInstallHandler(dispatcher)
     const externalAutomationsHandler = new ExternalAutomationsHandler(dispatcher)

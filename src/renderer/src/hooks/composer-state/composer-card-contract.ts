@@ -7,6 +7,8 @@ export type ComposerCardSourceProps = Pick<
   | 'projectOptions'
   | 'selectedProjectId'
   | 'selectedRepoIsGit'
+  | 'selectedRepoIsJj'
+  | 'jjStartRevision'
   | 'projectHostSetupOptions'
   | 'selectedProjectHostSetupId'
   | 'ephemeralVmRecipes'
@@ -57,6 +59,7 @@ export type ComposerCardSourceProps = Pick<
 
 export type ComposerCardActionProps = {
   onRepoChange: ComposerModel['handleRepoChange']
+  onJjStartRevisionChange: ComposerModel['setJjStartRevision']
   onProjectChange: ComposerModel['handleProjectChange']
   onProjectHostSetupChange: ComposerModel['handleProjectHostSetupChange']
   onEphemeralVmRecipeChange: ComposerModel['setSelectedEphemeralVmRecipeId']

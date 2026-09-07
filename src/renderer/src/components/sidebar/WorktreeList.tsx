@@ -1,12 +1,8 @@
 import React, { useCallback, useMemo } from 'react'
 import { useAppStore } from '@/store'
 import { useShallow } from 'zustand/react/shallow'
-import {
-  useAllWorktrees,
-  useProjectHostSetupProjection,
-  useRepoMap,
-  useWorktreeMap
-} from '@/store/selectors'
+import { useProjectHostSetupProjection, useRepoMap } from '@/store/selectors'
+import { getAllWorktreesFromState, getWorktreeMapFromState } from '@/store/selectors'
 import type { ProjectGroup } from '../../../../shared/project-group-types'
 import type { Repo } from '../../../../shared/repo-types'
 import {
@@ -37,6 +33,7 @@ import { useVisibleSidebarWorktrees } from './worktree-list/listing/use-visible-
 import { useWorktreeStatusMutations } from './worktree-list/drag/use-status-mutations'
 import { shouldFiltersHideAllRows } from './sidebar-empty-state-gate'
 import { buildWorktreeManualOrderCatalog } from './worktree-manual-order-catalog'
+import { projectSidebarWorktrees } from './visible-worktrees'
 
 type WorktreeListProps = {
   scrollOffsetRef: React.MutableRefObject<number>
@@ -56,9 +53,8 @@ const WorktreeList = React.memo(function WorktreeList({
   onWorkspaceBoardDragPreviewCancel = NOOP_WORKSPACE_BOARD_DRAG_PREVIEW_CALLBACK
 }: WorktreeListProps) {
   // ── Granular selectors (each is a primitive or shallow-stable ref) ──
-  const allWorktrees = useAllWorktrees()
+  const persistedWorktreesByRepo = useAppStore((s) => s.worktreesByRepo)
   const repoMap = useRepoMap()
-  const worktreeMap = useWorktreeMap()
   const repos = useAppStore((s) => s.repos)
   const worktreeLineageById = useAppStore((s) => s.worktreeLineageById)
   const workspaceLineageByChildKey = useAppStore((s) => s.workspaceLineageByChildKey)
@@ -101,6 +97,24 @@ const WorktreeList = React.memo(function WorktreeList({
       projectHostSetups: projectHostSetupProjection.setups
     }),
     [projectHostSetupProjection]
+  )
+  const projectedWorktreesByRepo = useMemo(
+    () =>
+      projectSidebarWorktrees(
+        persistedWorktreesByRepo,
+        detectedWorktreesByRepo,
+        repos,
+        projectHostSetupProjection.setups
+      ),
+    [detectedWorktreesByRepo, persistedWorktreesByRepo, projectHostSetupProjection.setups, repos]
+  )
+  const allWorktrees = useMemo(
+    () => getAllWorktreesFromState({ worktreesByRepo: projectedWorktreesByRepo }),
+    [projectedWorktreesByRepo]
+  )
+  const worktreeMap = useMemo(
+    () => getWorktreeMapFromState({ worktreesByRepo: projectedWorktreesByRepo }),
+    [projectedWorktreesByRepo]
   )
 
   const agentSendTargetWorktreeId = useAgentSendTargetWorktreeId()
@@ -156,6 +170,7 @@ const WorktreeList = React.memo(function WorktreeList({
     pinnedDisplayPolicy,
     defaultHostId,
     worktrees: visibleWorktrees,
+    worktreesByRepo: projectedWorktreesByRepo,
     repos,
     repoMap,
     worktreeMap,

@@ -7,7 +7,10 @@ import {
   SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE
 } from '../../../providers/ssh-git-dispatch'
 import { resolveRegisteredWorktreePath } from '../../registered-worktree-roots-cache'
-import { getLocalGitOptionsForRegisteredWorktree } from '../../local-worktree-runtime-options'
+import {
+  assertFilesystemGitRepo,
+  getLocalGitOptionsForRegisteredWorktree
+} from '../../local-worktree-runtime-options'
 import { assertGitPushTargetShape } from '../../../../shared/git-push-target-validation'
 import {
   materializeWorktreePushTargetRemote,
@@ -34,6 +37,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
       // Why: coerce to strict boolean so a malformed payload (e.g. string 'false') can't enable --set-upstream; mirror in src/relay/git-handler.ts.
       const publish = args.publish === true
       if (args.connectionId) {
+        assertFilesystemGitRepo(store, args.worktreePath, args.worktreePath, args.connectionId)
         if (args.pushTarget) {
           assertGitPushTargetShape(args.pushTarget)
         }
@@ -57,6 +61,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
         })
       }
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      assertFilesystemGitRepo(store, args.worktreePath, worktreePath)
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,
@@ -98,6 +103,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
       }
     ): Promise<void> => {
       if (args.connectionId) {
+        assertFilesystemGitRepo(store, args.worktreePath, args.worktreePath, args.connectionId)
         if (args.pushTarget) {
           assertGitPushTargetShape(args.pushTarget)
         }
@@ -118,6 +124,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
         return provider.pullBranch(args.worktreePath, materializedPushTarget)
       }
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      assertFilesystemGitRepo(store, args.worktreePath, worktreePath)
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,
@@ -158,6 +165,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
       }
     ): Promise<void> => {
       if (args.connectionId) {
+        assertFilesystemGitRepo(store, args.worktreePath, args.worktreePath, args.connectionId)
         if (args.pushTarget) {
           assertGitPushTargetShape(args.pushTarget)
         }
@@ -178,6 +186,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
         return provider.fastForwardBranch(args.worktreePath, materializedPushTarget)
       }
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      assertFilesystemGitRepo(store, args.worktreePath, worktreePath)
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,
@@ -213,6 +222,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
       args: { worktreePath: string; baseRef: string; connectionId?: string }
     ): Promise<void> => {
       if (args.connectionId) {
+        assertFilesystemGitRepo(store, args.worktreePath, args.worktreePath, args.connectionId)
         const provider = getSshGitProvider(args.connectionId)
         if (!provider) {
           throw new Error(SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE)
@@ -220,6 +230,7 @@ export function registerGitRemoteBranchMutationHandlers(context: FilesystemHandl
         return provider.rebaseFromBase(args.worktreePath, args.baseRef)
       }
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      assertFilesystemGitRepo(store, args.worktreePath, worktreePath)
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,

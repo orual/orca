@@ -8,14 +8,15 @@ export type WorktreeRemovalInFlight = {
 }
 
 export function getWorktreeRemovalOptionsKey(
-  args: Pick<RemoveWorktreeArgs, 'force' | 'allowUnverifiedPtyStop' | 'skipArchive'>
+  args: Pick<RemoveWorktreeArgs, 'force' | 'allowUnverifiedPtyStop' | 'skipArchive' | 'jjRemoval'>
 ): string {
   const forceKey = args.force === true ? 'force' : 'normal'
   const archiveKey = args.skipArchive === true ? 'skip-archive' : 'run-archive'
   // Why: a Force Delete retry must not coalesce onto the in-flight attempt that
   // just failed the PTY gate — it would inherit that failure instead of retrying.
   const ptyKey = args.allowUnverifiedPtyStop === true ? 'allow-unverified-pty' : 'require-pty-stop'
-  return `${forceKey}:${archiveKey}:${ptyKey}`
+  const jjKey = args.jjRemoval ?? 'git-or-folder'
+  return `${forceKey}:${archiveKey}:${ptyKey}:${jjKey}`
 }
 
 export function getWorktreeRemovalInFlightKey(

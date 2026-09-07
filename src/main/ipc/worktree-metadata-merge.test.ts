@@ -12,6 +12,25 @@ const git: GitWorktreeInfo = {
 }
 
 describe('mergeWorktree identity projection', () => {
+  it.each(['/projects/task-j', 'C:\\projects\\task-j'])(
+    'labels a jj workspace by its own directory: %s',
+    (path) => {
+      const jj = {
+        ...git,
+        path,
+        branch: '',
+        jjWorkspace: { name: 'task-pointer', root: path, rootResolved: true }
+      }
+      expect(mergeWorktree('repo-1', jj, undefined, 'spren').displayName).toBe('task-j')
+      const meta = {
+        ...mergeWorktree('repo-1', jj, undefined),
+        displayName: 'My custom label',
+        displayNameIsPinned: true
+      }
+      expect(mergeWorktree('repo-1', jj, meta, 'spren').displayName).toBe('My custom label')
+    }
+  )
+
   it('re-derives an automatic display name from the current branch', () => {
     const worktree = mergeWorktree(
       'repo-1',

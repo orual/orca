@@ -43,6 +43,7 @@ type UseFileExplorerWatchParams = {
   dragSourcePath: string | null
   isNativeDragOver: boolean
   operationOwner?: FileExplorerOperationOwner
+  onFilesystemChange?: (payload: FsChangedPayload) => void
 }
 
 export function getFileExplorerWatchRuntimeEnvironmentId(
@@ -88,7 +89,8 @@ export function useFileExplorerWatch({
   inlineInput,
   dragSourcePath,
   isNativeDragOver,
-  operationOwner
+  operationOwner,
+  onFilesystemChange
 }: UseFileExplorerWatchParams): void {
   // Why: subscriptions follow the selected worktree; host focus is only a legacy default, not an ownership signal.
   const activeRuntimeEnvironmentId = useAppStore((s) =>
@@ -208,6 +210,7 @@ export function useFileExplorerWatch({
         }
         return
       }
+      onFilesystemChange?.(payload)
       // Why: defer refreshes during inline input/drag so rows don't shift; native drags only set isNativeDragOver (design §6.2).
       if (
         inlineInputRef.current !== null ||
@@ -272,7 +275,14 @@ export function useFileExplorerWatch({
       deferredRef.current = []
       processPayloadRef.current = null
     }
-  }, [worktreePath, activeWorktreeId, activeRuntimeEnvironmentId, setDirCache, setSelectedPath])
+  }, [
+    worktreePath,
+    activeWorktreeId,
+    activeRuntimeEnvironmentId,
+    setDirCache,
+    setSelectedPath,
+    onFilesystemChange
+  ])
 
   // ── Flush deferred events when interaction ends ────────────────────
   useEffect(() => {

@@ -21,6 +21,8 @@ export type RemoveWorktreeArgs = {
   /** Explicit Force Delete only — `force` alone is set by the ordinary confirmation (#11960). */
   allowUnverifiedPtyStop?: boolean
   skipArchive?: boolean
+  /** JJ only: drop registration while keeping bytes, forget then delete, or resume a proven directory cleanup. */
+  jjRemoval?: 'forget' | 'forget-and-delete' | 'cleanup-only'
   snapshotPruneBatchId?: string
 }
 

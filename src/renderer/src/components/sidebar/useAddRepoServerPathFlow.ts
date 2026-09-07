@@ -41,7 +41,7 @@ export function useAddRepoServerPathFlow({
 }: {
   addRepoPath: (
     path: string,
-    kind?: 'git' | 'folder',
+    kind?: 'git' | 'folder' | 'jj',
     options?: { runtimeEnvironmentId?: string | null }
   ) => Promise<Repo | null>
   activeRuntimeEnvironmentId: string | null

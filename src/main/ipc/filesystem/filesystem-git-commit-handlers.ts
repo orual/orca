@@ -5,7 +5,10 @@ import {
   SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE
 } from '../../providers/ssh-git-dispatch'
 import { resolveRegisteredWorktreePath } from '../registered-worktree-roots-cache'
-import { getLocalGitOptionsForRegisteredWorktree } from '../local-worktree-runtime-options'
+import {
+  assertFilesystemGitRepo,
+  getLocalGitOptionsForRegisteredWorktree
+} from '../local-worktree-runtime-options'
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 
 export function registerFilesystemGitCommitHandlers(context: FilesystemHandlerContext): void {
@@ -21,6 +24,7 @@ export function registerFilesystemGitCommitHandlers(context: FilesystemHandlerCo
         throw new Error('Commit message is required')
       }
       if (args.connectionId) {
+        assertFilesystemGitRepo(store, args.worktreePath, args.worktreePath, args.connectionId)
         const provider = getSshGitProvider(args.connectionId)
         if (!provider) {
           throw new Error(SSH_GIT_PROVIDER_UNAVAILABLE_MESSAGE)
@@ -28,6 +32,7 @@ export function registerFilesystemGitCommitHandlers(context: FilesystemHandlerCo
         return provider.commit(args.worktreePath, args.message)
       }
       const worktreePath = await resolveRegisteredWorktreePath(args.worktreePath, store)
+      assertFilesystemGitRepo(store, args.worktreePath, worktreePath)
       const gitOptions = getLocalGitOptionsForRegisteredWorktree(
         store,
         args.worktreePath,

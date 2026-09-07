@@ -10,6 +10,7 @@ import { Buffer } from 'node:buffer'
 export function createOutputSink(maxBytes: number): {
   write: (chunk: Buffer | string) => void
   text: () => string
+  buffer: () => Buffer
   truncated: () => boolean
 } {
   const chunks: Buffer[] = []
@@ -22,10 +23,12 @@ export function createOutputSink(maxBytes: number): {
         bytes += chunk.length
         return
       }
-      chunks.push(chunk.length > remaining ? chunk.subarray(0, remaining) : chunk)
+      // Copy retained bytes so a short view cannot keep a much larger source buffer alive.
+      chunks.push(Buffer.from(chunk.subarray(0, Math.min(chunk.length, remaining))))
       bytes += chunk.length
     },
     text: () => Buffer.concat(chunks).toString('utf8'),
+    buffer: () => Buffer.concat(chunks),
     // Why: callers that parse the output need to tell a short answer from a
     // clipped one -- truncated JSON or JSONL parses as a smaller valid result.
     truncated: () => bytes > maxBytes

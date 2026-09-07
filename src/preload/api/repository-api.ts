@@ -30,7 +30,7 @@ export type RepositoryApi = {
   // Why: error union matches the IPC handler's return shape; renderer callers branch on `'error' in result`.
   add: (args: {
     path: string
-    kind?: 'git' | 'folder'
+    kind?: 'git' | 'folder' | 'jj'
     displayName?: string
   }) => Promise<{ repo: Repo } | { error: string }>
   remove: (args: { repoId: string }) => Promise<void>
@@ -89,7 +89,7 @@ export type RepositoryApi = {
     connectionId: string
     remotePath: string
     displayName?: string
-    kind?: 'git' | 'folder'
+    kind?: 'git' | 'folder' | 'jj'
   }) => Promise<{ repo: Repo } | { error: string }>
   // Why: error union matches the IPC handler's return shape; renderer callers branch on `'error' in result`.
   create: (args: {

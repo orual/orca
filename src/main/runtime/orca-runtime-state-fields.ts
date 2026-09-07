@@ -17,6 +17,7 @@ import type { OrchestrationEnvironmentTransport } from './orchestration/environm
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import { installRuntimeFileCommandSurface } from './runtime-file-command-surface'
 import { installRuntimeGitCommandSurface } from './runtime-git-command-surface'
+import { installRuntimeJjCommandSurface } from './runtime-jj-command-surface'
 import { installRuntimeRepositoryCommandSurface } from './runtime-repository-command-surface'
 import { installRuntimeReviewCommandSurface } from './runtime-review-command-surface'
 import { installRuntimeServiceCommandSurface } from './runtime-service-command-surface'
@@ -95,6 +96,7 @@ export class OrcaRuntimeWithStateFields extends OrcaRuntimeWithLinearCommands {
     const runtime = this as RuntimeCommandSurfaceHost<this>
     installRuntimeFileCommandSurface(runtime, this.fileCommands)
     installRuntimeGitCommandSurface(runtime, this.gitCommands)
+    installRuntimeJjCommandSurface(runtime, this.jjCommands)
     installRuntimeRepositoryCommandSurface(runtime, {
       projectHostSetups: this.projectHostSetups,
       projectGroups: this.projectGroups,

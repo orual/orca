@@ -115,6 +115,23 @@ describe('registerFilesystemHandlers', () => {
     })
   })
 
+  it('rejects jj git:stage before invoking local Git', async () => {
+    const jjStore = {
+      ...store,
+      getRepos: () => [{ ...store.getRepos()[0], kind: 'jj' as const }]
+    }
+    registerFilesystemHandlers(jjStore as never)
+
+    await expect(
+      handlers.get('git:stage')!(null, {
+        worktreePath: REPO_PATH,
+        filePath: 'src/file.ts'
+      })
+    ).rejects.toThrow('unsupported_repo_kind')
+
+    expect(stageFileMock).not.toHaveBeenCalled()
+  })
+
   it('passes configured shared links through the local status path', async () => {
     const sharedStore = {
       ...store,

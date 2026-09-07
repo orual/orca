@@ -1,12 +1,16 @@
 import { useAppStore } from '@/store'
-import { getRepoMapFromState } from '@/store/selectors'
+import { getProjectHostSetupProjectionFromState, getRepoMapFromState } from '@/store/selectors'
 import {
   getSettingsFocusedExecutionHostId,
   getWorktreeExecutionHostId,
   normalizeExecutionHostId,
   type ExecutionHostId
 } from '../../../../shared/execution-host'
-import { buildVisibleWorktreeOptionsFromState, computeVisibleWorktrees } from './visible-worktrees'
+import {
+  buildVisibleWorktreeOptionsFromState,
+  computeVisibleWorktrees,
+  projectSidebarWorktrees
+} from './visible-worktrees'
 
 /**
  * Filter-only visibility for one worktree id: runs the sidebar filter pipeline
@@ -26,8 +30,14 @@ export function worktreePassesSidebarFilters(
   const repoMap = getRepoMapFromState(state)
   const requestedHostId = executionHostId ? normalizeExecutionHostId(executionHostId) : null
   const defaultHostId = getSettingsFocusedExecutionHostId(state.settings)
-  return computeVisibleWorktrees(
+  const projectedWorktreesByRepo = projectSidebarWorktrees(
     state.worktreesByRepo,
+    state.detectedWorktreesByRepo,
+    state.repos,
+    getProjectHostSetupProjectionFromState(state).setups
+  )
+  return computeVisibleWorktrees(
+    projectedWorktreesByRepo,
     [],
     buildVisibleWorktreeOptionsFromState(state, repoMap)
   ).some((worktree) => {

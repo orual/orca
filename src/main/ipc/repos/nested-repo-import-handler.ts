@@ -14,8 +14,20 @@ import {
 } from '../../project-groups/nested-repo-import'
 import { createNestedRepoImportTargetResolver } from '../../project-groups/nested-repo-import-target'
 import { getSshGitProvider } from '../../providers/ssh-git-dispatch'
-import { LOCAL_EXECUTION_HOST_ID, toSshExecutionHostId } from '../../../shared/execution-host'
+import { getSshJjProvider } from '../../providers/ssh-jj-dispatch'
+import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
+import { findRemoteJjOwnerWorkspaceRoot, probeRemoteJjMarker } from './remote-repo-registration'
+import {
+  getRepoExecutionHostId,
+  LOCAL_EXECUTION_HOST_ID,
+  toSshExecutionHostId
+} from '../../../shared/execution-host'
 import { detectRepoIconAndUpstream } from '../../repo-icon-autodetect'
+import {
+  findImportedJjRepo,
+  getJjImportIdentityKey,
+  probeLocalJjRepo
+} from './local-repo-registration'
 import { prepareLocalWorktreeRootForRepo } from '../../worktree-root-preparation'
 import { getActiveMultiplexer } from '../ssh'
 import { invalidateAuthorizedRootsCache } from '../registered-worktree-roots-cache'
@@ -64,38 +76,102 @@ export function registerNestedRepoImportHandler(mainWindow: BrowserWindow, store
         })
       )
       const importedProjectIdsByRepoPath = new Map<string, string>()
+      const importedProjectIdsByJjIdentity = new Map<string, string>()
       const importTargetResolver = createNestedRepoImportTargetResolver()
 
       for (const [projectGroupOrder, repoPath] of selection.selectedPaths.entries()) {
         try {
           let importRepoPath = repoPath
+          let repoKind: 'git' | 'jj' = 'git'
+          let jjIdentity: string | null | undefined = null
           if (args.connectionId) {
             const gitProvider = getSshGitProvider(args.connectionId)
-            const check = gitProvider ? await gitProvider.isGitRepoAsync(repoPath) : null
-            if (!gitProvider || !check?.isRepo) {
-              results.push({
-                path: repoPath,
-                status: 'failed',
-                error: 'Not a valid git repository'
-              })
+            const jjProvider = getSshJjProvider(args.connectionId)
+            const fsProvider = getSshFilesystemProvider(args.connectionId)
+            const candidate = scan.repos.find(
+              (entry) =>
+                normalizeRuntimePathForComparison(entry.path) ===
+                normalizeRuntimePathForComparison(repoPath)
+            )
+            const marker = fsProvider
+              ? await probeRemoteJjMarker(repoPath, fsProvider, gitProvider?.getHostPlatform?.())
+              : { kind: 'unavailable' as const, error: 'SSH filesystem is unavailable' }
+            if (marker.kind === 'unavailable') {
+              results.push({ path: repoPath, status: 'failed', error: marker.error })
               continue
             }
-            importRepoPath = await importTargetResolver.resolveSsh(repoPath, gitProvider)
+            if (candidate?.kind === 'jj' || marker.kind === 'present') {
+              const detection = jjProvider ? await jjProvider.detect(repoPath) : null
+              if (!detection?.ok) {
+                results.push({
+                  path: repoPath,
+                  status: 'failed',
+                  error: 'Jujutsu repository unavailable'
+                })
+                continue
+              }
+              repoKind = 'jj'
+              jjIdentity = detection.repositoryIdentity
+              const workspaces = jjProvider?.listWorkspaces
+                ? await jjProvider.listWorkspaces(repoPath)
+                : null
+              const ownerRoot =
+                workspaces?.ok && fsProvider
+                  ? await findRemoteJjOwnerWorkspaceRoot(
+                      workspaces.workspaces,
+                      fsProvider,
+                      gitProvider?.getHostPlatform?.()
+                    )
+                  : null
+              importRepoPath = ownerRoot ?? detection.root
+            } else {
+              const check = gitProvider ? await gitProvider.isGitRepoAsync(repoPath) : null
+              if (!gitProvider || !check?.isRepo) {
+                results.push({
+                  path: repoPath,
+                  status: 'failed',
+                  error: 'Not a valid git repository'
+                })
+                continue
+              }
+              importRepoPath = await importTargetResolver.resolveSsh(repoPath, gitProvider)
+            }
           } else {
-            await awaitWindowsHostGitEnvironmentReady({ cwd: repoPath })
-            if (!isGitRepo(repoPath)) {
-              results.push({
-                path: repoPath,
-                status: 'failed',
-                error: 'Not a valid git repository'
-              })
+            const candidate = scan.repos.find(
+              (entry) =>
+                normalizeRuntimePathForComparison(entry.path) ===
+                normalizeRuntimePathForComparison(repoPath)
+            )
+            const jjProbe = await probeLocalJjRepo(repoPath, candidate?.kind === 'jj')
+            if (jjProbe.kind === 'unavailable') {
+              results.push({ path: repoPath, status: 'failed', error: jjProbe.error })
               continue
             }
-            importRepoPath = await importTargetResolver.resolveLocal(repoPath)
+            if (jjProbe.kind === 'jj') {
+              repoKind = 'jj'
+              jjIdentity = jjProbe.detection.repositoryIdentity
+              importRepoPath = jjProbe.ownerRoot ?? jjProbe.root
+            } else {
+              await awaitWindowsHostGitEnvironmentReady({ cwd: repoPath })
+              if (!isGitRepo(repoPath)) {
+                results.push({
+                  path: repoPath,
+                  status: 'failed',
+                  error: 'Not a valid git repository'
+                })
+                continue
+              }
+              importRepoPath = await importTargetResolver.resolveLocal(repoPath)
+            }
           }
           const normalizedImportRepoPath = normalizeRuntimePathForComparison(importRepoPath)
+          const executionHostId = args.connectionId
+            ? toSshExecutionHostId(args.connectionId)
+            : LOCAL_EXECUTION_HOST_ID
+          const jjIdentityKey = getJjImportIdentityKey(jjIdentity, executionHostId)
           const alreadyImportedProjectId =
-            importedProjectIdsByRepoPath.get(normalizedImportRepoPath)
+            importedProjectIdsByRepoPath.get(normalizedImportRepoPath) ??
+            (jjIdentityKey ? importedProjectIdsByJjIdentity.get(jjIdentityKey) : undefined)
           if (alreadyImportedProjectId) {
             results.push({
               path: repoPath,
@@ -104,29 +180,52 @@ export function registerNestedRepoImportHandler(mainWindow: BrowserWindow, store
             })
             continue
           }
-          const existing = store
+          const existingByPath = store
             .getRepos()
             .find(
               (repo) =>
-                (repo.connectionId ?? null) === (args.connectionId ?? null) &&
+                getRepoExecutionHostId(repo) === executionHostId &&
                 normalizeRuntimePathForComparison(repo.path) === normalizedImportRepoPath
             )
+          const existing =
+            existingByPath ??
+            (repoKind === 'jj'
+              ? await findImportedJjRepo({
+                  repos: store.getRepos(),
+                  identity: jjIdentity,
+                  executionHostId,
+                  detectIdentity: async (repo) => {
+                    if (args.connectionId) {
+                      const detection = await getSshJjProvider(args.connectionId)?.detect(repo.path)
+                      return detection?.ok ? detection.repositoryIdentity : null
+                    }
+                    const probe = await probeLocalJjRepo(repo.path, true)
+                    return probe.kind === 'jj' ? probe.detection.repositoryIdentity : null
+                  }
+                })
+              : undefined)
           const group = groupResolver.getGroupForRepo(repoPath)
           if (existing) {
             if (group) {
               store.moveProjectToGroup(existing.id, group.id, projectGroupOrder)
             }
             importedProjectIdsByRepoPath.set(normalizedImportRepoPath, existing.id)
+            if (jjIdentityKey) {
+              importedProjectIdsByJjIdentity.set(jjIdentityKey, existing.id)
+            }
             results.push({ path: repoPath, projectId: existing.id, status: 'already-known' })
             continue
           }
-          const detected = await detectRepoIconAndUpstream({
-            repoPath: importRepoPath,
-            kind: 'git',
-            executionHostId: args.connectionId
-              ? toSshExecutionHostId(args.connectionId)
-              : LOCAL_EXECUTION_HOST_ID
-          })
+          const detected =
+            repoKind === 'jj'
+              ? {}
+              : await detectRepoIconAndUpstream({
+                  repoPath: importRepoPath,
+                  kind: repoKind,
+                  executionHostId: args.connectionId
+                    ? toSshExecutionHostId(args.connectionId)
+                    : LOCAL_EXECUTION_HOST_ID
+                })
           const repo: Repo = {
             id: randomUUID(),
             path: importRepoPath,
@@ -134,10 +233,14 @@ export function registerNestedRepoImportHandler(mainWindow: BrowserWindow, store
             badgeColor: DEFAULT_REPO_BADGE_COLOR,
             ...detected,
             addedAt: Date.now(),
-            kind: 'git',
+            kind: repoKind,
             ...(args.connectionId ? { connectionId: args.connectionId } : {}),
-            externalWorktreeVisibilityLegacy: false,
-            projectHostSetupMethod: 'imported-existing-folder',
+            ...(repoKind === 'git'
+              ? {
+                  externalWorktreeVisibilityLegacy: false,
+                  projectHostSetupMethod: 'imported-existing-folder' as const
+                }
+              : {}),
             ...(group
               ? {
                   projectGroupId: group.id,
@@ -146,16 +249,20 @@ export function registerNestedRepoImportHandler(mainWindow: BrowserWindow, store
               : {})
           }
           store.addRepo(repo)
-          await prepareLocalWorktreeRootForRepo(store, repo)
+          if (repoKind === 'git') {
+            await prepareLocalWorktreeRootForRepo(store, repo)
+          }
           if (args.connectionId) {
             getActiveMultiplexer(args.connectionId)?.notify('session.registerRoot', {
               rootPath: importRepoPath
             })
           }
           importedProjectIdsByRepoPath.set(normalizedImportRepoPath, repo.id)
+          if (jjIdentityKey) {
+            importedProjectIdsByJjIdentity.set(jjIdentityKey, repo.id)
+          }
           results.push({ path: repoPath, projectId: repo.id, status: 'imported' })
-          // Why: reaches here only after the isGitRepo guard above confirmed a git repo, so always true.
-          emitRepoAdded('folder_picker', false, true)
+          emitRepoAdded('folder_picker', false, repoKind === 'git')
         } catch (error) {
           results.push({
             path: repoPath,

@@ -1,7 +1,7 @@
 import type { Repo } from '../../../../shared/repo-types'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { RemoveWorktreeResult } from '../../../../shared/worktree/create-types'
-import { isFolderRepo } from '../../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind, isJjRepo } from '../../../../shared/repo-kind'
 import { assertWorktreeUnlockedForRemoval } from '../../../../shared/worktree/removal'
 import { isWindowsAbsolutePathLike } from '../../../../shared/cross-platform-path'
 import { getLocalProjectWorktreeGitOptions } from '../../../project-runtime-git-options'
@@ -28,6 +28,7 @@ import { removeFolderWorkspace } from './remove-folder-workspace'
 import { removeUnregisteredWorktree } from './remove-unregistered-worktree'
 import { removeRegisteredRemoteWorktree } from './remove-registered-remote-worktree'
 import { removeRegisteredLocalWorktree } from './remove-registered-local-worktree'
+import { removeJjWorkspace } from './remove-jj-workspace'
 
 export async function executeWorktreeRemoval(
   context: WorktreeIpcContext,
@@ -40,6 +41,12 @@ export async function executeWorktreeRemoval(
   const { mainWindow, store, runtime } = context
   if (isFolderRepo(repo)) {
     return removeFolderWorkspace(context, args, repo, repoId, removalHostId)
+  }
+  if (isJjRepo(repo)) {
+    return removeJjWorkspace(context, args, repo, repoId, worktreePath, removalHostId)
+  }
+  if (!isGitRepoKind(repo)) {
+    throw new Error('unsupported_repo_kind')
   }
   const provider = repo.connectionId ? requireSshGitProvider(repo.connectionId) : null
   const localWorktreeGitOptions = repo.connectionId

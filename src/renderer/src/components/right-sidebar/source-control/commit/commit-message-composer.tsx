@@ -15,7 +15,9 @@ export function CommitMessageComposer({
   onCancelGenerate,
   isGenerateDisabled,
   onGenerate,
-  generateTooltip
+  generateTooltip,
+  placeholder,
+  ariaLabel
 }: {
   rows: number
   commitMessage: string
@@ -28,6 +30,8 @@ export function CommitMessageComposer({
   isGenerateDisabled: boolean
   onGenerate: () => void
   generateTooltip?: string
+  placeholder?: string
+  ariaLabel?: string
 }): React.JSX.Element {
   return (
     <div className="relative">
@@ -36,11 +40,14 @@ export function CommitMessageComposer({
         value={commitMessage}
         disabled={disabled}
         onChange={(e) => onCommitMessageChange(e.target.value)}
-        placeholder={translate('auto.components.right.sidebar.SourceControl.0d0a8359d3', 'Message')}
-        aria-label={translate(
-          'auto.components.right.sidebar.SourceControl.b94112eb9e',
-          'Commit message'
-        )}
+        placeholder={
+          placeholder ??
+          translate('auto.components.right.sidebar.SourceControl.0d0a8359d3', 'Message')
+        }
+        aria-label={
+          ariaLabel ??
+          translate('auto.components.right.sidebar.SourceControl.b94112eb9e', 'Commit message')
+        }
         aria-describedby={describedBy || undefined}
         // Why: reserve right padding so text doesn't slide under the absolute-positioned Generate icon.
         // Why: pin disabled:border-input so Chromium's UA disabled styles don't wash out the field outline.

@@ -1,6 +1,45 @@
 import { describe, expect, it } from 'vitest'
 import type { DetectedWorktreeListResult } from '../../../../../../shared/worktree/types'
 import { applyDetectedWorktreeUpdates } from './detected-worktree-meta'
+import { isDetectedWorktreeListResult } from './detected-worktree-provider-request'
+
+describe('detected worktree provider results', () => {
+  it('accepts authoritative jj results while preserving unresolved row availability', () => {
+    const result: DetectedWorktreeListResult = {
+      repoId: 'repo-1',
+      authoritative: true,
+      source: 'jj',
+      worktrees: [
+        {
+          id: 'repo-1::/repo',
+          repoId: 'repo-1',
+          path: '/repo',
+          ownership: 'unknown-legacy',
+          selectedCheckout: true,
+          visible: true
+        } as DetectedWorktreeListResult['worktrees'][number],
+        {
+          id: 'repo-1::/unresolved',
+          repoId: 'repo-1',
+          path: '/unresolved',
+          ownership: 'unknown-legacy',
+          selectedCheckout: false,
+          visible: false
+        } as DetectedWorktreeListResult['worktrees'][number]
+      ]
+    }
+
+    expect(isDetectedWorktreeListResult(result)).toBe(true)
+    expect(result.worktrees.find((worktree) => worktree.path === '/repo')).toMatchObject({
+      selectedCheckout: true,
+      visible: true
+    })
+    expect(result.worktrees.find((worktree) => worktree.path === '/unresolved')).toMatchObject({
+      selectedCheckout: false,
+      visible: false
+    })
+  })
+})
 
 describe('applyDetectedWorktreeUpdates display-name provenance', () => {
   it('projects pinning changes into detected rows', () => {

@@ -70,7 +70,7 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
     'repos:add',
     async (
       _event,
-      args: { path: string; kind?: 'git' | 'folder'; displayName?: string }
+      args: { path: string; kind?: 'git' | 'folder' | 'jj'; displayName?: string }
     ): Promise<{ repo: Repo } | { error: string }> => {
       const result = await addLocalRepoFromPath(store, args.path, args.kind, args.displayName)
       if ('error' in result) {
@@ -94,7 +94,7 @@ export function registerRepoCreationHandlers(mainWindow: BrowserWindow, store: S
         connectionId: string
         remotePath: string
         displayName?: string
-        kind?: 'git' | 'folder'
+        kind?: 'git' | 'folder' | 'jj'
       }
     ): Promise<{ repo: Repo } | { error: string }> => {
       const result = await addRemoteRepoFromPath(store, args)

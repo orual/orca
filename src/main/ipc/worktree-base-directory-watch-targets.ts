@@ -6,7 +6,7 @@ import type { FileStat, IFilesystemProvider } from '../providers/types'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
 import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind, isJjRepo } from '../../shared/repo-kind'
 import {
   isRuntimePathAbsolute,
   isWindowsAbsolutePathLike,
@@ -175,6 +175,10 @@ async function maybeAddBaseTarget(
     }
   }
 
+  if (!isGitRepoKind(repo)) {
+    return
+  }
+
   const commonDir = await resolveWorktreeCommonGitDirectory(
     repo,
     remoteProvider
@@ -195,7 +199,7 @@ async function resolveRepoTargets(
   mirrorDistro: string | undefined
 ): Promise<Map<string, WorktreeBaseWatchTarget>> {
   const targets = new Map<string, WorktreeBaseWatchTarget>()
-  if (isFolderRepo(repo)) {
+  if (isFolderRepo(repo) || isJjRepo(repo)) {
     return targets
   }
   const executionHostId = getRepoExecutionHostId(repo)

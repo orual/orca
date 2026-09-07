@@ -47,6 +47,15 @@ describe('runtime Git target routing', () => {
     expect(requireRuntimeGitProvider(target({ executionHostId: 'ssh:openclaw' }))).toBe(openclaw)
   })
 
+  it('rejects jj targets before local or SSH Git routing', () => {
+    expect(() => runtimeGitRouteForTarget(target({ repo: { kind: 'jj' } as never }))).toThrow(
+      'unsupported_repo_kind'
+    )
+    expect(() => requireRuntimeGitProvider(target({ repo: { kind: 'jj' } as never }))).toThrow(
+      'unsupported_repo_kind'
+    )
+  })
+
   it('answers `local` with no provider, which is the only meaning `null` carries', () => {
     expect(runtimeGitRouteForTarget(target({}))).toEqual({ kind: 'local' })
     expect(requireRuntimeGitProvider(target({}))).toBeNull()

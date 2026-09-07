@@ -92,6 +92,8 @@ export function useWorkspaceIdentityState(input: WorkspaceIdentityStateInput) {
     persistDraft ? newWorkspaceDraft?.baseBranch : initialBaseBranch
   )
 
+  const [jjStartRevision, setJjStartRevision] = useState('@')
+
   const [compareBaseRef, setCompareBaseRef] = useState<string | undefined>(
     persistDraft ? newWorkspaceDraft?.compareBaseRef : undefined
   )
@@ -193,6 +195,8 @@ export function useWorkspaceIdentityState(input: WorkspaceIdentityStateInput) {
     setLinkedGitLabMR,
     baseBranch,
     setBaseBranch,
+    jjStartRevision,
+    setJjStartRevision,
     compareBaseRef,
     setCompareBaseRef,
     branchNameOverride,

@@ -10,6 +10,12 @@ import {
 import type { TerminalQuickCommand } from '../../src/shared/terminal-quick-command-types'
 import { handleMockFilePreviewRequest } from './mock-server-file-preview-data'
 import { handleMockGitRequest } from './mock-server-git-state'
+import {
+  createMockJjWorktree,
+  handleMockJjRequest,
+  isMockJjEnabled,
+  MOCK_JJ_REPO
+} from './mock-server-jj-state'
 import { handleMockAccountRequest } from './mock-server-account-rpc'
 import { handleMockNativeChatRequest } from './mock-server-native-chat-scenario'
 import { handleMockSessionTabsRequest } from './mock-server-session-tabs-fixture'
@@ -21,7 +27,11 @@ const MOCK_WORKTREE_COUNT = readScenarioNumber('MOCK_WORKTREE_COUNT', 2)
 const MOCK_RPC_DELAY_MS = readScenarioNumber('MOCK_RPC_DELAY_MS', 0)
 
 const FAKE_REPOS = createMockRepos(MOCK_REPO_COUNT)
-let fakeWorktrees = createMockWorktrees(FAKE_REPOS, MOCK_WORKTREE_COUNT)
+const MOCK_REPOS = isMockJjEnabled() ? [...FAKE_REPOS, MOCK_JJ_REPO] : FAKE_REPOS
+let fakeWorktrees = createMockWorktrees(MOCK_REPOS, MOCK_WORKTREE_COUNT)
+if (isMockJjEnabled()) {
+  fakeWorktrees = [createMockJjWorktree(), ...fakeWorktrees]
+}
 
 // Mutable quick-command list so the mobile Quick Commands sheet can add/edit/
 // delete against the mock the same way it does a paired desktop.
@@ -63,7 +73,7 @@ export type RpcResponse = {
 export type RpcRespond = (response: RpcResponse, shouldSend?: () => boolean) => void
 
 export const mockScenarioSummary = {
-  repoCount: FAKE_REPOS.length,
+  repoCount: MOCK_REPOS.length,
   worktreeCount: fakeWorktrees.length,
   rpcDelayMs: MOCK_RPC_DELAY_MS
 }
@@ -125,6 +135,7 @@ export function handleRequest(
 
   // Each returns false for methods it does not own; first owner wins.
   if (
+    handleMockJjRequest(request, respond, success, ws) ||
     handleMockGitRequest(request, respond, success) ||
     handleMockFilePreviewRequest(request, respond, success, error) ||
     handleMockAccountRequest(request, respond, success, error) ||
@@ -142,7 +153,10 @@ export function handleRequest(
           runtimeId: 'mock-runtime',
           protocolVersion: DESKTOP_PROTOCOL_VERSION,
           minCompatibleMobileVersion: MIN_COMPATIBLE_MOBILE_VERSION,
-          capabilities: ['accounts.codex-reset-credit.v1'],
+          capabilities: [
+            'accounts.codex-reset-credit.v1',
+            ...(isMockJjEnabled() ? ['repo-kind.jj.v1'] : [])
+          ],
           graphStatus: 'ready',
           windowCount: 1,
           tabCount: 2,
@@ -162,7 +176,7 @@ export function handleRequest(
       break
 
     case 'repo.list':
-      respond(success(request.id, { repos: FAKE_REPOS }))
+      respond(success(request.id, { repos: MOCK_REPOS }))
       break
 
     case 'settings.get':
@@ -243,21 +257,34 @@ export function handleRequest(
     }
 
     case 'worktree.create': {
-      const repoId = repoSelectorToId(request.params?.repo) ?? FAKE_REPOS[0]?.id ?? 'repo-1'
-      const repo = FAKE_REPOS.find((candidate) => candidate.id === repoId) ?? FAKE_REPOS[0]
+      const repoId = repoSelectorToId(request.params?.repo) ?? MOCK_REPOS[0]?.id ?? 'repo-1'
+      const repo = MOCK_REPOS.find((candidate) => candidate.id === repoId) ?? MOCK_REPOS[0]
       const name = String(request.params?.name ?? `mock-${fakeWorktrees.length + 1}`)
-      const created = createMockWorktrees(repo ? [repo] : FAKE_REPOS, 1)[0]
+      const isJjCreate = isMockJjEnabled() && repo?.id === MOCK_JJ_REPO.id
+      const created = isJjCreate
+        ? createMockJjWorktree(name)
+        : createMockWorktrees(repo ? [repo] : MOCK_REPOS, 1)[0]
       const next =
         created && repo
           ? {
               ...created,
-              worktreeId: `${repo.id}::${repo.path}/worktrees/${name}`,
+              worktreeId: `${repo.id}::${repo.path}/${isJjCreate ? 'workspaces' : 'worktrees'}/${name}`,
               repoId: repo.id,
               repo: repo.displayName,
-              path: `${repo.path}/worktrees/${name}`,
-              branch: `feature/${name}`,
+              path: `${repo.path}/${isJjCreate ? 'workspaces' : 'worktrees'}/${name}`,
+              branch: isJjCreate ? '' : `feature/${name}`,
               displayName: name,
-              isActive: true
+              isActive: true,
+              ...(isJjCreate
+                ? {
+                    workspaceKind: 'jj' as const,
+                    jjWorkspace: {
+                      name,
+                      root: `${repo.path}/workspaces/${name}`,
+                      rootResolved: true
+                    }
+                  }
+                : {})
             }
           : null
       if (next) {

@@ -374,6 +374,20 @@ describe('enrichMissingRepoGitRemoteIdentities', () => {
     expect(probeGitRemoteIdentity).toHaveBeenCalledTimes(6)
   })
 
+  it('does not enrich jj workspaces', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+    vi.mocked(probeGitRemoteIdentity).mockResolvedValue(resolvedProbe)
+    const store = makeStore(makeRepo({ kind: 'jj' }))
+
+    await sweep(store)
+    vi.setSystemTime(1_000 + REFRESH_STARTUP_DELAY_MS + REFRESH_TTL_MS + 1)
+    await sweep(store)
+
+    expect(probeGitRemoteIdentity).not.toHaveBeenCalled()
+    expect(store.updateRepo).not.toHaveBeenCalled()
+  })
+
   it('does not re-probe folder workspaces', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
@@ -454,6 +468,34 @@ describe('enrichMissingRepoGitRemoteIdentities', () => {
 
     expect(store.updateRepo).not.toHaveBeenCalled()
     expect(repo.gitRemoteIdentity).toBeUndefined()
+  })
+
+  it('retires a pending probe when a Git repo transitions to jj', async () => {
+    const probe = deferred<GitRemoteIdentityProbe>()
+    vi.mocked(probeGitRemoteIdentity)
+      .mockReturnValueOnce(probe.promise)
+      .mockResolvedValueOnce(resolvedProbe)
+    const repo = makeRepo()
+    const store = makeStore(repo)
+
+    enrichMissingRepoGitRemoteIdentities(store)
+    const signal = vi.mocked(probeGitRemoteIdentity).mock.calls[0]?.[2]?.signal
+    expect(signal).toBeInstanceOf(AbortSignal)
+
+    repo.kind = 'jj'
+    enrichMissingRepoGitRemoteIdentities(store)
+    probe.resolve(resolvedProbe)
+    await drainEnrichmentSweep()
+
+    expect(signal?.aborted).toBe(true)
+    expect(store.updateRepo).not.toHaveBeenCalled()
+    expect(repo.gitRemoteIdentity).toBeUndefined()
+
+    repo.kind = 'git'
+    await sweep(store)
+
+    expect(probeGitRemoteIdentity).toHaveBeenCalledTimes(2)
+    expect(repo.gitRemoteIdentity).toEqual(remoteIdentity)
   })
 })
 

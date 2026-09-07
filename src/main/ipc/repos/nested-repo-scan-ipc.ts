@@ -3,12 +3,20 @@ import { isAbsolute, posix } from 'node:path'
 import type { z } from 'zod'
 import type { NestedRepoScanResult } from '../../../shared/project-group-types'
 import { normalizeRuntimePathForComparison } from '../../../shared/cross-platform-path'
-import { awaitWindowsHostGitEnvironmentReady } from '../../git/runner'
 import { scanNestedRepos } from '../../project-groups/nested-repo-discovery'
 import { getSshGitProvider } from '../../providers/ssh-git-dispatch'
 import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { getActiveMultiplexer } from '../ssh'
+import { probeRemoteJjMarker } from './remote-repo-registration'
 import type { ProjectGroupScanNestedArgs } from './repo-ipc-arg-schemas'
+
+function isMissingRemoteStatError(error: unknown): boolean {
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 2
+}
 
 export const activeNestedRepoScans = new Map<string, AbortController>()
 type CompletedNestedRepoScan = {
@@ -98,10 +106,6 @@ export async function scanNestedReposForIpc(args: {
 }): Promise<NestedRepoScanResult> {
   validateNestedRepoScanRoot(args.path, args.connectionId)
   if (!args.connectionId) {
-    await awaitWindowsHostGitEnvironmentReady({
-      cwd: args.path,
-      ...(args.signal ? { signal: args.signal } : {})
-    })
     return scanNestedRepos({
       path: args.path,
       options: args.options,
@@ -111,7 +115,7 @@ export async function scanNestedReposForIpc(args: {
   }
   const gitProvider = getSshGitProvider(args.connectionId)
   const fsProvider = getSshFilesystemProvider(args.connectionId)
-  if (!gitProvider || !fsProvider) {
+  if (!fsProvider) {
     throw new Error('ssh_connection_unavailable')
   }
   const resolvedPath = await resolveSshProjectGroupPath(args.connectionId, args.path)
@@ -130,28 +134,58 @@ export async function scanNestedReposForIpc(args: {
       readTextFile: async (filePath) => (await fsProvider.readFile(filePath)).content,
       joinPath: (parentPath, childName) => posix.join(parentPath, childName),
       basename: (path) => posix.basename(path),
+      hasJjMarker: async (path) => {
+        try {
+          const marker = await fsProvider.stat(posix.join(path, '.jj'))
+          return marker.type === 'directory' || marker.type === 'file'
+        } catch (error) {
+          if (isMissingRemoteStatError(error)) {
+            return false
+          }
+          throw error
+        }
+      },
       hasGitMarker: async (path) => {
         try {
           const marker = await fsProvider.stat(posix.join(path, '.git'))
           if (marker.type === 'directory' || marker.type === 'file') {
             return true
           }
-        } catch {
+        } catch (error) {
+          if (!isMissingRemoteStatError(error)) {
+            throw error
+          }
           // Continue to cheap bare-repository marker checks below.
         }
+        const statIfMissing = async (markerPath: string) => {
+          try {
+            return await fsProvider.stat(markerPath)
+          } catch (error) {
+            if (isMissingRemoteStatError(error)) {
+              return null
+            }
+            throw error
+          }
+        }
         const [head, objects, refs] = await Promise.all([
-          fsProvider.stat(posix.join(path, 'HEAD')).catch(() => null),
-          fsProvider.stat(posix.join(path, 'objects')).catch(() => null),
-          fsProvider.stat(posix.join(path, 'refs')).catch(() => null)
+          statIfMissing(posix.join(path, 'HEAD')),
+          statIfMissing(posix.join(path, 'objects')),
+          statIfMissing(posix.join(path, 'refs'))
         ])
         return head?.type === 'file' && objects?.type === 'directory' && refs?.type === 'directory'
       },
       isSelectedPathGitRepo: async (path) => {
-        try {
-          return (await gitProvider.isGitRepoAsync(path)).isRepo
-        } catch {
+        if (!gitProvider) {
           return false
         }
+        return (await gitProvider.isGitRepoAsync(path)).isRepo
+      },
+      isSelectedPathJjRepo: async (path) => {
+        const result = await probeRemoteJjMarker(path, fsProvider, gitProvider?.getHostPlatform?.())
+        if (result.kind === 'unavailable') {
+          throw new Error(result.error)
+        }
+        return result.kind === 'present'
       }
     }
   })

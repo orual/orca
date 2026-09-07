@@ -36,6 +36,7 @@ export type ReposIpcMocks = {
     'readDir' | 'readFile' | 'stat' | 'createDir' | 'createDirNoClobber' | 'deletePath',
     ReposIpcSpy
   >
+  mockSshJjProvider: { detect: ReposIpcSpy }
   mockMultiplexer: Record<'request' | 'notify', ReposIpcSpy>
   gitSpawnMock: ReposIpcSpy
   gitSpawnAfterWindowsEnvironmentReadyMock: ReposIpcSpy
@@ -87,6 +88,9 @@ export function createReposIpcMocks(): ReposIpcMocks {
       createDir: vi.fn().mockResolvedValue(undefined),
       createDirNoClobber: vi.fn().mockResolvedValue(undefined),
       deletePath: vi.fn().mockResolvedValue(undefined)
+    },
+    mockSshJjProvider: {
+      detect: vi.fn()
     },
     mockMultiplexer: {
       request: vi.fn(),
@@ -177,6 +181,17 @@ export function sshFilesystemDispatchModuleMock(mocks: ReposIpcMocks): Record<st
   }
 }
 
+export function sshJjDispatchModuleMock(mocks: ReposIpcMocks): Record<string, unknown> {
+  return {
+    getSshJjProvider: vi.fn().mockImplementation((id: string) => {
+      if (id === 'conn-1') {
+        return mocks.mockSshJjProvider
+      }
+      return undefined
+    })
+  }
+}
+
 export function sshModuleMock(mocks: ReposIpcMocks): Record<string, unknown> {
   return {
     getActiveMultiplexer: vi.fn().mockImplementation((id: string) => {
@@ -231,6 +246,8 @@ export function resetProjectGroupMocks(
   mocks.mockStore.getRepos.mockReturnValue([])
   mocks.mockFilesystemProvider.readDir.mockReset()
   mocks.mockFilesystemProvider.readDir.mockResolvedValue([])
+  mocks.mockSshJjProvider.detect.mockReset()
+  mocks.mockSshJjProvider.detect.mockRejectedValue(new Error('jj unavailable'))
   mocks.mockFilesystemProvider.readFile.mockReset()
   mocks.mockFilesystemProvider.readFile.mockRejectedValue(new Error('not found'))
   mocks.mockFilesystemProvider.stat.mockReset()

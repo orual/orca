@@ -1,10 +1,12 @@
 import type { ExecutionHostId } from '../../../src/shared/execution-host'
 import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 import type { RuntimeWorktreeAgentRow } from '../../../src/shared/runtime-types'
+import type { JjWorkspaceMetadata } from '../../../src/shared/worktree/types'
 
 export type Worktree = {
   sectionListKey?: string
-  workspaceKind?: 'git' | 'folder-workspace'
+  workspaceKind?: 'git' | 'jj' | 'folder-workspace'
+  jjWorkspace?: JjWorkspaceMetadata
   worktreeId: string
   repoId: string
   hostId?: ExecutionHostId

@@ -69,7 +69,7 @@ export function useMobileTasksProjectProjection(model: WorkspaceAndProjectStateM
     githubProjectTable?.project.host ?? activeGitHubProject?.host
   )
   const hostedRepos = useMemo(() => repos.filter(isHostedTaskRepo), [repos])
-  const workspaceRepos = useMemo(() => repos.filter((repo) => repo.kind !== 'folder'), [repos])
+  const workspaceRepos = useMemo(() => repos.filter(isHostedTaskRepo), [repos])
   const reposById = useMemo(() => new Map(repos.map((repo) => [repo.id, repo])), [repos])
   const selectedHostedRepos = useMemo(
     () =>

@@ -81,6 +81,8 @@ describe('useFullCreationExecution cancellation', () => {
       resolvedInitialWorkspaceStatus: undefined,
       selectedRepoExecutionHostId: 'local',
       selectedRepoIsGit: true,
+      selectedRepoIsJj: false,
+      jjStartRevision: '@',
       selectedRepoIsRemote: false,
       setSidebarOpen: vi.fn<FullCreationExecutionInput['setSidebarOpen']>(),
       settings: null,

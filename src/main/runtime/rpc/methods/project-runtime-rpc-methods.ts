@@ -37,7 +37,7 @@ const ProjectHostSetupExistingFolder = z.object({
   projectProviderIdentity: ProjectProviderIdentity.optional(),
   hostId: RequestedHostId,
   path: requiredString('Missing project path'),
-  kind: z.enum(['git', 'folder']).optional(),
+  kind: z.enum(['git', 'folder', 'jj']).optional(),
   displayName: OptionalString,
   setupMethod: z.enum(['imported-existing-folder', 'cloned']).optional()
 })
@@ -69,7 +69,7 @@ const ProjectHostSetupCreate = z.object({
   hostId: RequestedHostId,
   setupId: OptionalString,
   path: OptionalString,
-  kind: z.enum(['git', 'folder']).optional(),
+  kind: z.enum(['git', 'folder', 'jj']).optional(),
   displayName: OptionalString,
   worktreeBasePath: OptionalString,
   gitUsername: OptionalString,
@@ -88,7 +88,7 @@ const ProjectHostSetupUpdate = z.object({
       .enum(['legacy-repo', 'imported-existing-folder', 'cloned', 'provisioned'])
       .optional(),
     gitUsername: OptionalString,
-    kind: z.enum(['git', 'folder']).optional()
+    kind: z.enum(['git', 'folder', 'jj']).optional()
   })
 })
 

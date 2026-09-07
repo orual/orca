@@ -21,6 +21,8 @@ export type CreateWorktreeCallOptions = {
     executionHostId: ExecutionHostId
     expectedPath: string
   }
+  workspaceKind?: 'jj'
+  jjStartRevision?: string
 }
 
 /** Everything `createWorktree` received, packed once so both transports read from the same record.
@@ -45,6 +47,8 @@ function sharedCreateFields(
   const { options } = request
   return {
     name: attempt.name,
+    ...(request.workspaceKind ? { workspaceKind: request.workspaceKind } : {}),
+    ...(request.jjStartRevision ? { jjStartRevision: request.jjStartRevision } : {}),
     ...(options?.nameWasGenerated ? { nameWasGenerated: true } : {}),
     baseBranch: request.baseBranch,
     ...(request.compareBaseRef ? { compareBaseRef: request.compareBaseRef } : {}),

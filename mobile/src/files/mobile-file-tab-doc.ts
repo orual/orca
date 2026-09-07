@@ -4,6 +4,8 @@ import { buildMobileDiffLines, type MobileDiffLine } from '../session/mobile-dif
 import type { RpcClient } from '../transport/rpc-client'
 import type { RpcFailure, RpcSuccess } from '../transport/types'
 import { mobileDiffImageDataUri, type MobileBinaryDiffResult } from './mobile-diff-image-preview'
+import { readMobileJjFileDiff } from '../source-control/mobile-jj-client'
+import type { JjFileDiffResult } from '../../../src/shared/jj-types'
 
 type FileTabDocClient = Pick<RpcClient, 'sendRequest'>
 
@@ -18,7 +20,8 @@ export type MobileFileTabDoc =
 export type MobileFileTabDocRequest = {
   worktreeId: string
   relativePath: string
-  diffSource?: 'staged' | 'unstaged' | 'branch' | 'commit'
+  diffSource?: 'staged' | 'unstaged' | 'branch' | 'commit' | 'jj'
+  jjParentRevision?: string
 }
 
 // Throws 'binary_file'/'file_too_large'/the RPC error message; callers map those
@@ -29,6 +32,16 @@ export async function resolveMobileFileTabDoc(
 ): Promise<MobileFileTabDoc> {
   const worktree = `id:${request.worktreeId}`
   const { relativePath } = request
+  if (request.diffSource === 'jj') {
+    const result = await readMobileJjFileDiff(client, request.worktreeId, {
+      path: relativePath,
+      ...(request.jjParentRevision ? { parentRevision: request.jjParentRevision } : {})
+    })
+    if (!result.ok) {
+      throw new Error(result.message)
+    }
+    return mobileJjDiffDoc(result)
+  }
   if (request.diffSource === 'staged' || request.diffSource === 'unstaged') {
     const response = await client.sendRequest('git.diff', {
       worktree,
@@ -91,4 +104,16 @@ export async function resolveMobileFileTabDoc(
     truncated: result.truncated,
     byteLength: result.byteLength
   }
+}
+
+function mobileJjDiffDoc(result: Extract<JjFileDiffResult, { ok: true }>): MobileFileTabDoc {
+  if (result.diff.kind !== 'text') {
+    const dataUri = mobileDiffImageDataUri(result.diff as MobileBinaryDiffResult)
+    if (!dataUri) {
+      throw new Error('binary_file')
+    }
+    return { status: 'ready', kind: 'image', dataUri }
+  }
+  const diff = buildMobileDiffLines(result.diff.originalContent, result.diff.modifiedContent)
+  return { status: 'ready', kind: 'diff', lines: diff.lines, truncated: diff.truncated }
 }

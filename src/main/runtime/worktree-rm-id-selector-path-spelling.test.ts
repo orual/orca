@@ -34,7 +34,9 @@ vi.mock('../git/worktree', async (importOriginal) => ({
   listWorktreesStrict: listWorktreesStrictMock
 }))
 
-import { LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
+import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
+import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+import * as localWorktreeFilesystem from '../local-worktree-filesystem'
 import { OrcaRuntimeService } from './orca-runtime'
 
 const REPO_ID = 'repo-local'
@@ -59,12 +61,19 @@ function scannedSpellingOf(storedPath: string): string {
 }
 
 /** One registered repo whose worktree meta is writable, so a delete's `forgetLocal` is observable. */
-function makeStore(repoPath: string = REPO_PATH) {
+function makeStore(repoPath: string = REPO_PATH, repoKind: 'git' | 'jj' = 'git') {
   const metaById: Record<string, Record<string, unknown>> = {}
   const store = {
     getRepo: (id: string) => store.getRepos().find((repo) => repo.id === id),
     getRepos: () => [
-      { id: REPO_ID, path: repoPath, displayName: 'app', badgeColor: 'blue', addedAt: 1 }
+      {
+        id: REPO_ID,
+        path: repoPath,
+        displayName: 'app',
+        badgeColor: 'blue',
+        addedAt: 1,
+        kind: repoKind
+      }
     ],
     getAllWorktreeMeta: vi.fn(() => metaById),
     getWorktreeMeta: (id: string) => metaById[id],
@@ -96,6 +105,123 @@ function scanReports(worktreePath: string, repoPath: string = REPO_PATH): void {
     { path: repoPath, head: 'abc', branch: 'main', isBare: false, isMainWorktree: true },
     { path: worktreePath, head: 'def', branch: 'feature', isBare: false, isMainWorktree: false }
   ])
+}
+
+const JJ_REPO_PATH = '/jj/repo'
+const JJ_TARGET_ROOT = '/jj/workspaces/feature'
+const JJ_WORKTREE_ID = `repo-jj::${JJ_TARGET_ROOT}`
+
+function makeJjRemovalHarness(
+  options: {
+    hostId?: 'local' | `ssh:${string}`
+    metadataHostId?: 'local' | `ssh:${string}`
+    pending?: Record<string, unknown>
+    listing?: { name: string; root: string | null }[]
+  } = {}
+) {
+  const hostId = options.hostId ?? 'local'
+  const metadataHostId = options.metadataHostId ?? hostId
+  const repo = {
+    id: 'repo-jj',
+    path: JJ_REPO_PATH,
+    displayName: 'jj repo',
+    badgeColor: 'blue',
+    addedAt: 1,
+    kind: 'jj' as const,
+    ...(hostId === 'local' ? {} : { executionHostId: hostId })
+  }
+  const metadata = {
+    ...({
+      displayName: '',
+      comment: '',
+      linkedIssue: null,
+      linkedPR: null,
+      linkedLinearIssue: null,
+      isArchived: false,
+      isUnread: false,
+      isPinned: false,
+      sortOrder: 0,
+      lastActivityAt: 0
+    } satisfies WorktreeMeta),
+    hostId: metadataHostId,
+    instanceId: 'instance-1',
+    jjWorkspace: { name: 'feature', root: JJ_TARGET_ROOT, rootResolved: true },
+    jjCleanupPending: {
+      hostId: metadataHostId,
+      worktreeId: JJ_WORKTREE_ID,
+      instanceId: 'instance-1',
+      workspaceName: 'feature',
+      targetRoot: JJ_TARGET_ROOT,
+      ownerRoot: JJ_REPO_PATH,
+      ...options.pending
+    }
+  } satisfies WorktreeMeta
+  const hostMetadata = new Map<string, WorktreeMeta>([
+    [`${metadataHostId}:${JJ_WORKTREE_ID}`, metadata]
+  ])
+  const removeWorktreeMeta = vi.fn()
+  const runtimeStore = {
+    getRepo: (id: string) => (id === repo.id ? repo : undefined),
+    getRepos: () => [repo],
+    getAllWorktreeMeta: () => ({ [JJ_WORKTREE_ID]: metadata }),
+    getWorktreeMeta: () => metadata,
+    getWorktreeMetaForHost: (id: string, requestedHostId: string) =>
+      hostMetadata.get(`${requestedHostId}:${id}`),
+    setWorktreeMeta: vi.fn(),
+    setWorktreeMetaForHost: vi.fn(
+      (id: string, requestedHostId: ExecutionHostId, updates: Partial<WorktreeMeta>) => {
+        const key = `${requestedHostId}:${id}`
+        const next = { ...(hostMetadata.get(key) ?? metadata), ...updates, hostId: requestedHostId }
+        hostMetadata.set(key, next)
+        return next
+      }
+    ),
+    removeWorktreeMeta,
+    getSettings: () => ({
+      workspaceDir: '/tmp/workspaces',
+      nestWorkspaces: false,
+      refreshLocalBaseRefOnWorktreeCreate: false,
+      branchPrefix: 'none',
+      branchPrefixCustom: ''
+    }),
+    getProjects: () => []
+  }
+  const runtime = new OrcaRuntimeService(runtimeStore as never)
+  ;(
+    runtime as unknown as { resolveWorktreeRemovalTarget: ReturnType<typeof vi.fn> }
+  ).resolveWorktreeRemovalTarget = vi
+    .fn()
+    .mockResolvedValue({ id: JJ_WORKTREE_ID, repoId: repo.id, path: JJ_TARGET_ROOT })
+  const jjCommands = runtime['jjCommands'] as unknown as {
+    listRuntimeJjWorkspaces: ReturnType<typeof vi.fn>
+    detectRuntimeJj: ReturnType<typeof vi.fn>
+    removeRuntimeJjWorkspace: ReturnType<typeof vi.fn>
+  }
+  jjCommands.listRuntimeJjWorkspaces = vi.fn().mockResolvedValue({
+    ok: true,
+    workspaces: options.listing ?? [
+      { name: 'feature', root: JJ_TARGET_ROOT },
+      { name: 'default', root: JJ_REPO_PATH }
+    ]
+  })
+  jjCommands.detectRuntimeJj = vi.fn().mockResolvedValue({
+    ok: true,
+    version: '0.30.0',
+    major: 0,
+    minor: 30,
+    patch: 0,
+    root: JJ_REPO_PATH,
+    colocated: false
+  })
+  jjCommands.removeRuntimeJjWorkspace = vi.fn().mockResolvedValue({ ok: true })
+  vi.spyOn(runtime, 'acquireFileWatcherRemoval').mockResolvedValue({ finish: vi.fn() })
+  vi.spyOn(
+    runtime as unknown as {
+      stopPtysForDestructiveWorktreeRemoval: (...args: unknown[]) => Promise<void>
+    },
+    'stopPtysForDestructiveWorktreeRemoval'
+  ).mockResolvedValue(undefined)
+  return { runtime, jjCommands, removeWorktreeMeta, metadata }
 }
 
 type RemovalInternals = {
@@ -142,6 +268,150 @@ describe('worktree id selectors vs. the path spelling git reports (#16243)', () 
       ).resolves.toMatchObject({ repoId: REPO_ID, path: scannedSpellingOf(storedPath) })
     }
   )
+
+  it('requires an explicit JJ removal outcome before listing', async () => {
+    const runtime = new OrcaRuntimeService(makeStore(REPO_PATH, 'jj') as never)
+    const internals = runtime as unknown as RemovalInternals
+    internals.resolveWorktreeRemovalTarget = vi.fn().mockResolvedValue({
+      id: CANONICAL_ID,
+      repoId: REPO_ID,
+      path: WORKTREE_PATH
+    })
+
+    await expect(runtime.removeManagedWorktree(`id:${CANONICAL_ID}`)).rejects.toThrow(
+      'JJ removal requires an explicit forget or forget-and-delete outcome'
+    )
+    expect(listWorktreesStrictMock).not.toHaveBeenCalled()
+    expect(getSshGitProviderMock).not.toHaveBeenCalled()
+  })
+
+  describe('runtime jj workspace removal', () => {
+    it('forgets a JJ workspace without deleting its directory', async () => {
+      const { runtime, jjCommands, removeWorktreeMeta } = makeJjRemovalHarness({ pending: {} })
+      const removePath = vi.spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
+      removePath.mockClear()
+
+      await expect(
+        runtime.removeManagedWorktree(
+          `id:${JJ_WORKTREE_ID}`,
+          false,
+          false,
+          false,
+          'local',
+          'forget'
+        )
+      ).resolves.toEqual({})
+
+      expect(jjCommands.removeRuntimeJjWorkspace).toHaveBeenCalledWith(`id:${JJ_WORKTREE_ID}`, {
+        name: 'feature',
+        targetRoot: JJ_TARGET_ROOT,
+        ownerRoot: JJ_REPO_PATH
+      })
+      expect(removePath).not.toHaveBeenCalled()
+      expect(removeWorktreeMeta).toHaveBeenCalledWith(JJ_WORKTREE_ID, 'local')
+    })
+
+    it('retains host-qualified cleanup proof after JJ forget succeeds but deletion fails', async () => {
+      const { runtime, jjCommands, metadata } = makeJjRemovalHarness({ pending: {} })
+      vi.spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath').mockRejectedValueOnce(
+        new Error('directory busy')
+      )
+
+      await expect(
+        runtime.removeManagedWorktree(
+          `id:${JJ_WORKTREE_ID}`,
+          false,
+          false,
+          false,
+          'local',
+          'forget-and-delete'
+        )
+      ).resolves.toMatchObject({
+        jjCleanupPending: {
+          hostId: 'local',
+          worktreeId: JJ_WORKTREE_ID,
+          workspaceName: 'feature',
+          targetRoot: JJ_TARGET_ROOT,
+          ownerRoot: JJ_REPO_PATH
+        }
+      })
+
+      expect(jjCommands.removeRuntimeJjWorkspace).toHaveBeenCalledTimes(1)
+      expect(metadata.jjCleanupPending).toMatchObject({
+        hostId: 'local',
+        targetRoot: JJ_TARGET_ROOT,
+        ownerRoot: JJ_REPO_PATH
+      })
+    })
+
+    it('rejects cleanup-only proof from a different execution host before deletion', async () => {
+      const { runtime, jjCommands } = makeJjRemovalHarness({
+        hostId: 'ssh:builder',
+        metadataHostId: 'local'
+      })
+      const removePath = vi.spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
+      removePath.mockClear()
+
+      await expect(
+        runtime.removeManagedWorktree(
+          `id:${JJ_WORKTREE_ID}`,
+          false,
+          false,
+          false,
+          'ssh:builder',
+          'cleanup-only'
+        )
+      ).rejects.toThrow('No host-qualified JJ directory cleanup proof')
+
+      expect(jjCommands.removeRuntimeJjWorkspace).not.toHaveBeenCalled()
+      expect(removePath).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['workspace name', [{ name: 'feature', root: '/jj/workspaces/replacement' }]],
+      ['workspace path', [{ name: 'replacement', root: JJ_TARGET_ROOT }]]
+    ])('rejects cleanup-only when the JJ %s is re-registered', async (_label, listing) => {
+      const { runtime, jjCommands } = makeJjRemovalHarness({ listing })
+      const removePath = vi.spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
+      removePath.mockClear()
+
+      await expect(
+        runtime.removeManagedWorktree(
+          `id:${JJ_WORKTREE_ID}`,
+          false,
+          false,
+          false,
+          'local',
+          'cleanup-only'
+        )
+      ).rejects.toThrow('JJ workspace was registered again')
+
+      expect(jjCommands.removeRuntimeJjWorkspace).not.toHaveBeenCalled()
+      expect(removePath).not.toHaveBeenCalled()
+    })
+
+    it('requires complete JJ listing proof and never re-forgets during cleanup-only', async () => {
+      const { runtime, jjCommands } = makeJjRemovalHarness({
+        listing: [{ name: 'default', root: null }]
+      })
+      const removePath = vi.spyOn(localWorktreeFilesystem, 'removeLocalWorktreePath')
+      removePath.mockClear()
+
+      await expect(
+        runtime.removeManagedWorktree(
+          `id:${JJ_WORKTREE_ID}`,
+          false,
+          false,
+          false,
+          'local',
+          'cleanup-only'
+        )
+      ).rejects.toThrow('JJ workspace roots are incomplete')
+
+      expect(jjCommands.removeRuntimeJjWorkspace).not.toHaveBeenCalled()
+      expect(removePath).not.toHaveBeenCalled()
+    })
+  })
 
   it('still refuses an id whose path names a different workspace', async () => {
     scanReports(WORKTREE_PATH)

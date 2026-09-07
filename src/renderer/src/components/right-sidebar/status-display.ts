@@ -1,5 +1,6 @@
-import type { GitFileStatus, GitStatusEntry } from '../../../../shared/git-status-types'
 import { joinPath, normalizeRelativePath } from '@/lib/path'
+import type { JjChange, JjChangesResult } from '../../../../shared/jj-types'
+import type { GitFileStatus, GitStatusEntry } from '../../../../shared/git-status-types'
 import { splitPathSegments } from './path-tree'
 
 export const STATUS_LABELS: Record<GitFileStatus, string> = {
@@ -42,6 +43,22 @@ export function getDominantStatus(statuses: Iterable<GitFileStatus>): GitFileSta
   }
 
   return dominantStatus
+}
+
+export function normalizeJjChange(change: JjChange): GitStatusEntry {
+  return {
+    path: normalizeRelativePath(change.path),
+    status: change.status === 'conflicted' ? 'modified' : change.status,
+    area: 'unstaged',
+    ...(change.originalPath ? { oldPath: normalizeRelativePath(change.originalPath) } : {})
+  }
+}
+
+export function normalizeJjChangesResult(
+  result: JjChangesResult,
+  previousEntries: GitStatusEntry[] = []
+): GitStatusEntry[] {
+  return result.ok ? result.changes.map(normalizeJjChange) : previousEntries
 }
 
 export function buildStatusMap(entries: GitStatusEntry[]): Map<string, GitFileStatus> {

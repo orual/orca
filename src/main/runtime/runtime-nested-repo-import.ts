@@ -10,6 +10,12 @@ import type {
 import type { Repo } from '../../shared/repo-types'
 import { awaitWindowsHostGitEnvironmentReady } from '../git/runner'
 import { getRepoName, isGitRepo } from '../git/repo'
+import {
+  findImportedJjRepo,
+  getJjImportIdentityKey,
+  probeLocalJjRepo
+} from '../ipc/repos/local-repo-registration'
+import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../../shared/execution-host'
 import { scanNestedRepos } from '../project-groups/nested-repo-discovery'
 import {
   createNestedProjectGroupResolver,
@@ -73,17 +79,35 @@ export class RuntimeNestedRepoImport {
       })
     )
     const importedProjectIdsByRepoPath = new Map<string, string>()
+    const importedProjectIdsByJjIdentity = new Map<string, string>()
     const importTargetResolver = createNestedRepoImportTargetResolver()
     for (const [projectGroupOrder, repoPath] of selection.selectedPaths.entries()) {
       try {
-        await awaitWindowsHostGitEnvironmentReady({ cwd: repoPath })
-        if (!isGitRepo(repoPath)) {
+        const candidate = scan.repos.find(
+          (entry) =>
+            normalizeRuntimePathForComparison(entry.path) ===
+            normalizeRuntimePathForComparison(repoPath)
+        )
+        const jjProbe = await probeLocalJjRepo(repoPath, candidate?.kind === 'jj')
+        if (jjProbe.kind === 'unavailable') {
+          results.push({ path: repoPath, status: 'failed', error: jjProbe.error })
+          continue
+        }
+        const isJj = jjProbe.kind === 'jj'
+        const jjIdentity = isJj ? jjProbe.detection.repositoryIdentity : null
+        const jjIdentityKey = getJjImportIdentityKey(jjIdentity, LOCAL_EXECUTION_HOST_ID)
+        await (isJj ? Promise.resolve() : awaitWindowsHostGitEnvironmentReady({ cwd: repoPath }))
+        if (!isJj && !isGitRepo(repoPath)) {
           results.push({ path: repoPath, status: 'failed', error: 'Not a valid git repository' })
           continue
         }
-        const importRepoPath = await importTargetResolver.resolveLocal(repoPath)
+        const importRepoPath = isJj
+          ? (jjProbe.ownerRoot ?? jjProbe.root)
+          : await importTargetResolver.resolveLocal(repoPath)
         const normalizedImportRepoPath = normalizeRuntimePathForComparison(importRepoPath)
-        const alreadyImportedProjectId = importedProjectIdsByRepoPath.get(normalizedImportRepoPath)
+        const alreadyImportedProjectId =
+          importedProjectIdsByRepoPath.get(normalizedImportRepoPath) ??
+          (jjIdentityKey ? importedProjectIdsByJjIdentity.get(jjIdentityKey) : undefined)
         if (alreadyImportedProjectId) {
           results.push({
             path: repoPath,
@@ -92,15 +116,35 @@ export class RuntimeNestedRepoImport {
           })
           continue
         }
-        const existing = store
+        const existingByPath = store
           .getRepos()
-          .find((repo) => normalizeRuntimePathForComparison(repo.path) === normalizedImportRepoPath)
+          .find(
+            (repo) =>
+              getRepoExecutionHostId(repo) === LOCAL_EXECUTION_HOST_ID &&
+              normalizeRuntimePathForComparison(repo.path) === normalizedImportRepoPath
+          )
+        const existing =
+          existingByPath ??
+          (isJj
+            ? await findImportedJjRepo({
+                repos: store.getRepos(),
+                identity: jjIdentity,
+                executionHostId: LOCAL_EXECUTION_HOST_ID,
+                detectIdentity: async (repo) => {
+                  const probe = await probeLocalJjRepo(repo.path, true)
+                  return probe.kind === 'jj' ? probe.detection.repositoryIdentity : null
+                }
+              })
+            : undefined)
         const group = groupResolver.getGroupForRepo(repoPath)
         if (existing) {
           if (group) {
             store.moveProjectToGroup(existing.id, group.id, projectGroupOrder)
           }
           importedProjectIdsByRepoPath.set(normalizedImportRepoPath, existing.id)
+          if (jjIdentityKey) {
+            importedProjectIdsByJjIdentity.set(jjIdentityKey, existing.id)
+          }
           results.push({ path: repoPath, projectId: existing.id, status: 'already-known' })
           continue
         }
@@ -110,12 +154,15 @@ export class RuntimeNestedRepoImport {
           displayName: getRepoName(importRepoPath),
           badgeColor: DEFAULT_REPO_BADGE_COLOR,
           addedAt: Date.now(),
-          kind: 'git',
-          externalWorktreeVisibilityLegacy: false,
+          kind: isJj ? 'jj' : 'git',
+          ...(isJj ? {} : { externalWorktreeVisibilityLegacy: false }),
           ...(group ? { projectGroupId: group.id, projectGroupOrder } : {})
         }
         store.addRepo(repo)
         importedProjectIdsByRepoPath.set(normalizedImportRepoPath, repo.id)
+        if (jjIdentityKey) {
+          importedProjectIdsByJjIdentity.set(jjIdentityKey, repo.id)
+        }
         results.push({ path: repoPath, projectId: repo.id, status: 'imported' })
       } catch (error) {
         results.push({

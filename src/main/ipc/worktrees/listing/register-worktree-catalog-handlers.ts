@@ -1,5 +1,7 @@
 import { ipcMain } from 'electron'
-import { isFolderRepo } from '../../../../shared/repo-kind'
+import { isFolderRepo, isJjRepo } from '../../../../shared/repo-kind'
+import { getLocalProjectWorktreeGitOptions } from '../../../project-runtime-git-options'
+import { buildJjWorktreeInfos, listJjWorkspacesForRepo } from '../../../jj/jj-workspace-catalog'
 import { getRepoExecutionHostId, type ExecutionHostId } from '../../../../shared/execution-host'
 import { getSshGitProvider } from '../../../providers/ssh-git-dispatch'
 import { EMPTY_RETIRED_NAME_REGISTRY } from '../../../../shared/worktree/retired-name-registry'
@@ -97,6 +99,22 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
         let hygieneDue: boolean | undefined
         if (isFolderRepo(repo)) {
           return listVisibleFolderWorkspaces(store, repo)
+        } else if (isJjRepo(repo)) {
+          const result = await listJjWorkspacesForRepo(
+            repo,
+            getLocalProjectWorktreeGitOptions(store, repo)
+          )
+          const worktrees = buildDetectedGitWorktrees(
+            store,
+            repo,
+            buildJjWorktreeInfos(store, repo, result),
+            metadataForRepo(repo)
+          )
+          return worktrees
+            .filter((worktree) => worktree.visible)
+            .map((worktree) =>
+              stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadataForRepo(repo))
+            )
         } else if (repo.connectionId) {
           const provider = getSshGitProvider(repo.connectionId)
           if (!provider) {
@@ -190,6 +208,21 @@ export function registerWorktreeCatalogHandlers(context: WorktreeIpcContext): vo
       let hygieneDue: boolean | undefined
       if (isFolderRepo(repo)) {
         return listVisibleFolderWorkspaces(store, repo)
+      } else if (isJjRepo(repo)) {
+        const result = await listJjWorkspacesForRepo(
+          repo,
+          getLocalProjectWorktreeGitOptions(store, repo)
+        )
+        const metadata = allMeta ?? readAllWorktreeMetaForRepo(store, repo)
+        const worktrees = buildDetectedGitWorktrees(
+          store,
+          repo,
+          buildJjWorktreeInfos(store, repo, result),
+          metadata
+        )
+        return worktrees
+          .filter((worktree) => worktree.visible)
+          .map((worktree) => stampAndMergeVisibleDetectedWorktree(store, repo, worktree, metadata))
       } else if (repo.connectionId) {
         const provider = getSshGitProvider(repo.connectionId)
         if (!provider) {

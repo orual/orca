@@ -1,11 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import {
   addWorktreeMock,
   getActiveMultiplexerMock,
   getSshGitProviderMock,
+  gitExecFileAsyncMock,
   listWorktreesMock
 } from './worktrees-test-module-mocks'
 import { handlers, setupWorktreeHandlers, store } from './worktrees-test-harness'
+
+const createJjManagedWorktreeMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    worktree: { id: 'jj-worktree', path: '/workspace/jj-worktree', branch: '' }
+  }))
+)
+vi.mock('../jj/jj-workspace-creation', () => ({
+  createJjManagedWorktree: createJjManagedWorktreeMock
+}))
 
 vi.mock('electron', async () =>
   (await import('./worktrees-test-module-mocks')).electronModuleMock()
@@ -24,9 +35,10 @@ vi.mock('../git/git-username', async (importOriginal) => ({
   resolveLocalGitUsername: (await import('./worktrees-test-module-mocks'))
     .resolveLocalGitUsernameMock
 }))
-vi.mock('../github/client', async () =>
-  (await import('./worktrees-test-module-mocks')).githubClientModuleMock()
-)
+vi.mock('../github/client', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...(await import('./worktrees-test-module-mocks')).githubClientModuleMock()
+}))
 vi.mock('../source-control/hosted-review', async () =>
   (await import('./worktrees-test-module-mocks')).hostedReviewModuleMock()
 )
@@ -142,6 +154,77 @@ function useRepo(repo: ReturnType<typeof makeRepo>): void {
 describe('worktrees:create execution host routing', () => {
   beforeEach(() => {
     setupWorktreeHandlers()
+    createJjManagedWorktreeMock.mockClear()
+    gitExecFileAsyncMock.mockClear()
+  })
+
+  it('routes omitted-kind jj IPC creation through jj without Git calls', async () => {
+    useRepo(makeRepo({ kind: 'jj' }))
+
+    await handlers['worktrees:create'](null, { repoId: 'repo-1', name: 'jj-worktree' })
+
+    expect(createJjManagedWorktreeMock).toHaveBeenCalledTimes(1)
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(addWorktreeMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects explicit jj creation for a Git repo before any backend call', async () => {
+    useRepo(makeRepo({ kind: 'git' }))
+
+    await expect(
+      handlers['worktrees:create'](null, {
+        repoId: 'repo-1',
+        workspaceKind: 'jj',
+        name: 'jj-worktree'
+      })
+    ).rejects.toThrow('jj workspace creation requires a jj repository')
+    expect(createJjManagedWorktreeMock).not.toHaveBeenCalled()
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(addWorktreeMock).not.toHaveBeenCalled()
+  })
+
+  it('routes omitted-kind jj runtime creation through jj without Git calls', async () => {
+    const repo = makeRepo({ kind: 'jj' })
+    useRepo(repo)
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await runtime.createManagedWorktree({ repoSelector: repo.id, name: 'jj-worktree' })
+
+    expect(createJjManagedWorktreeMock).toHaveBeenCalledTimes(1)
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(addWorktreeMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects runtime-owned jj IPC creation before the JJ backend call', async () => {
+    useRepo(makeRepo({ kind: 'jj', executionHostId: 'runtime:env-1' }))
+
+    await expect(
+      handlers['worktrees:create'](null, {
+        repoId: 'repo-1',
+        workspaceKind: 'jj',
+        name: 'jj-worktree'
+      })
+    ).rejects.toThrow('not dispatched by this process')
+    expect(createJjManagedWorktreeMock).not.toHaveBeenCalled()
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(addWorktreeMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects explicit jj runtime creation for a Git repo before any backend call', async () => {
+    const repo = makeRepo({ kind: 'git' })
+    useRepo(repo)
+    const runtime = new OrcaRuntimeService(store as never)
+
+    await expect(
+      runtime.createManagedWorktree({
+        repoSelector: repo.id,
+        workspaceKind: 'jj',
+        name: 'jj-worktree'
+      })
+    ).rejects.toThrow('jj workspace creation requires a jj repository')
+    expect(createJjManagedWorktreeMock).not.toHaveBeenCalled()
+    expect(gitExecFileAsyncMock).not.toHaveBeenCalled()
+    expect(addWorktreeMock).not.toHaveBeenCalled()
   })
 
   it('creates on the SSH host for a row that names it only as executionHostId', async () => {

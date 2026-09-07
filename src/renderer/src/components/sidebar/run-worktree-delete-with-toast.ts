@@ -36,7 +36,8 @@ export function runWorktreeDeleteWithToast(
 
   const removeOptions = {
     ...(options.suppressPreservedBranchToast ? { suppressPreservedBranchToast: true } : {}),
-    ...(options.snapshotPruneBatchId ? { snapshotPruneBatchId: options.snapshotPruneBatchId } : {})
+    ...(options.snapshotPruneBatchId ? { snapshotPruneBatchId: options.snapshotPruneBatchId } : {}),
+    ...(options.jjRemoval ? { jjRemoval: options.jjRemoval } : {})
   }
   const removal =
     Object.keys(removeOptions).length > 0
@@ -45,6 +46,23 @@ export function runWorktreeDeleteWithToast(
   return removal
     .then((result) => {
       if (result.ok) {
+        if (result.jjCleanupPending) {
+          toast.warning('Workspace registration forgotten; directory still remains', {
+            description:
+              'The directory was not deleted. Resume cleanup only after confirming the retained target.',
+            action: {
+              label: 'Resume cleanup',
+              onClick: () => {
+                void runWorktreeDeleteWithToast(target, worktreeName, {
+                  ...options,
+                  jjRemoval: 'cleanup-only',
+                  focusSuccessorOnDelete: true
+                })
+              }
+            }
+          })
+          return false
+        }
         if (result.preservedBranch) {
           options.onPreservedBranch?.({
             worktreeId,

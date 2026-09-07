@@ -6,6 +6,8 @@ import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../shared/execu
 import { resolveGitRouteForHost } from './providers/execution-host-provider-dispatch'
 import { areWorktreePathsEqual } from './ipc/worktree-logic'
 import { WorktreeCatalogUnavailableError } from '../shared/worktree/worktree-catalog-availability'
+import { isJjRepo } from '../shared/repo-kind'
+import { listJjWorktreesForRepo } from './jj/jj-workspace-catalog'
 
 type LocalRepoWorktreeListOptions = {
   wslDistro?: string
@@ -46,6 +48,12 @@ export async function listRepoWorktrees(
   if (isFolderRepo(repo)) {
     return [createFolderWorktree(repo)]
   }
+  if (isJjRepo(repo)) {
+    return await listJjWorktreesForRepo(repo, {
+      ...(options?.wslDistro ? { wslDistro: options.wslDistro } : {}),
+      ...(options?.signal ? { signal: options.signal } : {})
+    })
+  }
   const route = resolveGitRouteForHost(getRepoExecutionHostId(repo))
   if (route.kind === 'runtime') {
     // A runtime row's `connectionId` names a target in the *server's* namespace, not one this
@@ -83,6 +91,12 @@ export async function listRepoWorktreeGraph(
 ): Promise<GitWorktreeInfo[]> {
   if (isFolderRepo(repo)) {
     return [createFolderWorktree(repo)]
+  }
+  if (isJjRepo(repo)) {
+    return await listJjWorktreesForRepo(repo, {
+      ...(options?.wslDistro ? { wslDistro: options.wslDistro } : {}),
+      ...(options?.signal ? { signal: options.signal } : {})
+    })
   }
   const route = resolveGitRouteForHost(getRepoExecutionHostId(repo))
   // An unreachable remote host answers `[]` here, unlike listRepoWorktrees above, which throws.

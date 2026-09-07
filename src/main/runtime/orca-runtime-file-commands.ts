@@ -4,6 +4,7 @@ import { RuntimeFileCommands } from './orca-runtime-files'
 import { nativeChatTranscriptIncludesPath } from '../native-chat/native-chat-file-provenance'
 import { createRuntimeFileWatcherRemoval } from './runtime-file-watcher-removal'
 import { RuntimeGitCommands } from './orca-runtime-git'
+import { RuntimeJjCommands } from './orca-runtime-jj'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { RuntimeTerminalAgentStatus } from '../../shared/runtime-types'
 import { RuntimeHostedReviewCommands } from './runtime-hosted-review-commands'
@@ -68,6 +69,10 @@ export class OrcaRuntimeWithFileCommands extends OrcaRuntimeWithPreservedBranchC
   forgetFileWatchersAfterRemoval = this.fileWatcherRemoval.forget
 
   acquireFileWatcherRemoval = this.fileWatcherRemoval.acquire
+
+  protected readonly jjCommands = new RuntimeJjCommands({
+    resolveRuntimeGitTarget: (selector) => this.resolveRuntimeGitTarget(selector)
+  })
 
   protected readonly gitCommands = new RuntimeGitCommands({
     resolveRuntimeGitTarget: (selector) => this.resolveRuntimeGitTarget(selector),

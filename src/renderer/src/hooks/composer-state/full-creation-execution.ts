@@ -19,6 +19,8 @@ export type FullCreationExecutionInput = Pick<
   | 'resolvedInitialWorkspaceStatus'
   | 'selectedRepoExecutionHostId'
   | 'selectedRepoIsGit'
+  | 'selectedRepoIsJj'
+  | 'jjStartRevision'
   | 'selectedRepoIsRemote'
   | 'setSidebarOpen'
   | 'settings'
@@ -32,21 +34,15 @@ import { useCallback } from 'react'
 import type { PendingSmartGitHubSubmitResolution } from './source-selection-decisions'
 import { translate } from '@/i18n/i18n'
 import { settleComposerSubmit } from '@/lib/composer-submit-cancellation'
-import { toFolderWorkspaceLinkedTask } from '@/components/sidebar/folder-workspace-composer-helpers'
-import { CLIENT_PLATFORM, ensureAgentStartupInTerminal } from '@/lib/new-workspace'
-import { createBrowserUuid } from '@/lib/browser-uuid'
-import { activateAndRevealWorktree } from '@/lib/worktree-activation'
-import { seedNativeChatAppliedSessionOptions } from '@/components/native-chat/native-chat-session-option-cache'
-import { queueWorkspaceActivationTerminalFocus } from '@/lib/workspace-activation-terminal-focus'
+import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import {
   hasExplicitTuiLaunchCustomization,
   resolveAgentLaunchRoute
 } from '@/lib/agent-launch-routing'
 import { readLocalRuntimeCapabilities } from '@/runtime/local-runtime-capabilities'
-import { settleFullCreationStructuredLaunch } from './full-creation-structured-launch'
-import { finalizeFullCreation } from './full-creation-finalization'
 import { buildFullCreationIssueCommand } from './full-creation-issue-command'
-import { buildFullCreationStartup } from './full-creation-startup'
+import { createFullWorktree } from './full-worktree-create'
+import { completeFullCreation } from './full-creation-completion'
 
 export function useFullCreationExecution(input: FullCreationExecutionInput) {
   const {
@@ -67,6 +63,8 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
     resolvedInitialWorkspaceStatus,
     selectedRepoExecutionHostId,
     selectedRepoIsGit,
+    selectedRepoIsJj,
+    jjStartRevision,
     selectedRepoIsRemote,
     setSidebarOpen,
     settings,
@@ -90,23 +88,10 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
       const {
         submitLinkedWorkItem,
         submitLinkedIssueNumber,
-        submitLinkedPR,
-        workspaceName,
-        nameWasGenerated,
-        nameIsAutoManaged,
-        submitBaseBranch,
-        submitCompareBaseRef,
-        submitPushTarget,
         submitStartupPrompt,
         submitShouldRunIssueAutomation,
-        effectiveSetupDecision,
         issueCommandTrustDecision,
         confirmedIssueCommandTemplate,
-        linkedLinearIssue,
-        linkedLinearIssueWorkspaceId,
-        linkedLinearIssueOrganizationUrlKey,
-        effectiveBranchNameOverride,
-        createDisplayName,
         pendingFirstAgentMessageRename,
         startupPlan,
         shouldSeedInitialAgentStatus,
@@ -152,56 +137,26 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
       const structuredLaunch = agentLaunchRoute === 'structured-native-chat'
       const effectiveBackendStartup = structuredLaunch ? undefined : backendStartup
 
-      const result = await createWorktree(
+      const result = await createFullWorktree(createWorktree, {
         repoId,
-        workspaceName,
-        selectedRepoIsGit ? submitBaseBranch : undefined,
-        effectiveSetupDecision,
-        selectedRepoIsGit && sparseEnabled
-          ? {
-              directories: normalizedSparseDirectories,
-              ...(effectivePresetId ? { presetId: effectivePresetId } : {})
-            }
-          : undefined,
-        telemetrySource,
-        createDisplayName,
-        submitLinkedIssueNumber ?? undefined,
-        submitLinkedPR ?? undefined,
-        submitPushTarget,
-        tuiAgent,
-        linkedLinearIssue,
-        effectiveBranchNameOverride,
-        resolvedInitialWorkspaceStatus,
-        smartGitHubResolution.kind === 'none' ? (linkedGitLabMR ?? undefined) : undefined,
-        smartGitHubResolution.kind === 'none' ? (linkedGitLabIssue ?? undefined) : undefined,
+        prepared,
+        smartGitHubResolution,
         effectiveBackendStartup,
-        structuredLaunch ? false : pendingFirstAgentMessageRename,
-        undefined,
-        linkedLinearIssueWorkspaceId,
-        linkedLinearIssueOrganizationUrlKey,
-        undefined,
-        undefined,
-        undefined,
-        submitCompareBaseRef,
-        {
-          linkedWorkItem: toFolderWorkspaceLinkedTask(submitLinkedWorkItem),
-          linkedTaskSourceContext: taskSourceContext,
-          nameWasGenerated,
-          ...(createDisplayName
-            ? { displayNameKind: nameIsAutoManaged ? ('generated' as const) : ('user' as const) }
-            : {}),
-          ...(!structuredLaunch && !effectiveBackendStartup && startupPlan?.draftPrompt
-            ? { startupDraft: startupPlan.draftPrompt }
-            : {}),
-          ...(parentWorktreeId ? { parentWorktreeId } : {})
-        }
-      )
-
-      const worktree = result.worktree
-
-      const trimmedNote = note.trim()
-
-      await applyWorktreeMeta(worktree.id, trimmedNote ? { comment: trimmedNote } : {})
+        structuredLaunch,
+        tuiAgent,
+        effectivePresetId,
+        linkedGitLabIssue,
+        linkedGitLabMR,
+        normalizedSparseDirectories,
+        parentWorktreeId,
+        resolvedInitialWorkspaceStatus,
+        selectedRepoIsGit,
+        selectedRepoIsJj,
+        sparseEnabled,
+        taskSourceContext,
+        telemetrySource,
+        jjStartRevision
+      })
 
       const issueCommand = buildFullCreationIssueCommand({
         shouldRun: submitShouldRunIssueAutomation && issueCommandTrustDecision === 'run',
@@ -209,85 +164,23 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
         issueNumber: submitLinkedIssueNumber,
         artifactUrl: submitLinkedWorkItem?.url
       })
-
-      const backendSpawnedStartup = result.startupTerminal?.spawned === true
-
-      if (startupPlan && !backendSpawnedStartup && !startupPlan.launchToken) {
-        // Why: delayed delivery must target the exact pane from this queued startup, so both halves share one renderer-session token.
-        startupPlan.launchToken = createBrowserUuid()
-      }
-
-      const startup = buildFullCreationStartup({
-        startupPlan,
-        backendSpawnedStartup,
-        agent: tuiAgent,
-        shouldSeedInitialAgentStatus,
-        prompt: submitStartupPrompt,
-        telemetry: composerTelemetry
-      })
-
-      const initialActivation = activateAndRevealWorktree(worktree.id, {
-        sidebarRevealBehavior: 'auto',
-        setup: result.setup,
-        defaultTabs: result.defaultTabs,
-        issueCommand,
-        ...(backendSpawnedStartup ? { backendStartupTerminalSpawned: true } : {}),
-        ...(!structuredLaunch && startup ? { startup } : {}),
-        ...(structuredLaunch ? { providesInitialSurface: true } : {})
-      })
-
-      const { structuredLaunchAccepted, visibilityUnknown, activation } =
-        await settleFullCreationStructuredLaunch({
-          structuredLaunch,
-          agent: tuiAgent,
-          worktreeId: worktree.id,
-          prompt: startupPlan?.draftPrompt ?? submitStartupPrompt,
-          initialActivation,
-          onDefinitiveRefusal: async () => {
-            if (pendingFirstAgentMessageRename) {
-              await applyWorktreeMeta(worktree.id, { pendingFirstAgentMessageRename: true }).catch(
-                () => undefined
-              )
-            }
-            return activateAndRevealWorktree(worktree.id, {
-              sidebarRevealBehavior: 'auto',
-              createNewTerminalForStartup: true,
-              ...(startup ? { startup } : {})
-            })
-          }
-        })
-
-      if (visibilityUnknown) {
-        setSidebarOpen(true)
-        onCreated?.()
-        return
-      }
-
-      if (!structuredLaunchAccepted && startupPlan) {
-        const optionScopeKey =
-          (activation !== false ? activation.primaryTabId : null) ?? result.startupTerminal?.tabId
-        if (optionScopeKey) {
-          seedNativeChatAppliedSessionOptions(optionScopeKey, tuiAgent, startupPlan.sessionOptions)
-        }
-      }
-
-      if (!structuredLaunchAccepted && startupPlan && !backendSpawnedStartup) {
-        void ensureAgentStartupInTerminal({
-          worktreeId: worktree.id,
-          primaryTabId: activation === false ? null : activation.primaryTabId,
-          startup: startupPlan
-        })
-      }
-
-      finalizeFullCreation({
-        setSidebarOpen,
-        persistDraft,
+      await completeFullCreation({
+        applyWorktreeMeta,
         clearNewWorkspaceDraft,
+        issueCommand,
+        note,
         onCreated,
-        structuredLaunchAccepted,
-        worktreeId: worktree.id,
-        activation,
-        queueWorkspaceActivationTerminalFocus
+        persistDraft,
+        result,
+        setSidebarOpen,
+        startupPlan,
+        submitStartupPrompt,
+        structuredLaunch,
+        tuiAgent,
+        shouldSeedInitialAgentStatus,
+        composerTelemetry,
+        worktreeId: result.worktree.id,
+        pendingFirstAgentMessageRename
       })
     },
     [
@@ -308,6 +201,8 @@ export function useFullCreationExecution(input: FullCreationExecutionInput) {
       resolvedInitialWorkspaceStatus,
       selectedRepoExecutionHostId,
       selectedRepoIsGit,
+      selectedRepoIsJj,
+      jjStartRevision,
       selectedRepoIsRemote,
       setSidebarOpen,
       settings,

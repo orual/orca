@@ -1,4 +1,5 @@
 import type { GitLabMRFile } from '../../shared/gitlab-types'
+import { countUnifiedDiffLines } from '../../shared/native-chat-diff'
 import { encodedProject } from './project-path-encoding'
 import {
   glabHostnameArgs,
@@ -18,28 +19,7 @@ import {
  * @internal - exposed for tests only.
  */
 export function countDiffLines(diff: string): { additions: number; deletions: number } {
-  let additions = 0
-  let deletions = 0
-  // Why: `---`/`+++` are file headers only before the first hunk. A removed line
-  // whose original text began with `--` (SQL/Lua/Haskell `-- comment`) becomes a
-  // diff line `---<content>`, colliding with the `--- a/file` header — so it must
-  // be counted once inside a hunk, not skipped.
-  let inHunk = false
-  for (const line of diff.split('\n')) {
-    if (line.startsWith('@@')) {
-      inHunk = true
-      continue
-    }
-    if (!inHunk) {
-      continue
-    }
-    if (line.startsWith('+')) {
-      additions += 1
-    } else if (line.startsWith('-')) {
-      deletions += 1
-    }
-  }
-  return { additions, deletions }
+  return countUnifiedDiffLines(diff)
 }
 
 function mapMRFile(raw: {

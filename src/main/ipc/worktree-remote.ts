@@ -1468,7 +1468,7 @@ export async function cleanupUnusedWorktreePushTargetRemoteSsh(
   )
 }
 
-async function readRemoteEffectiveHooks(
+export async function readRemoteEffectiveHooks(
   repo: Repo,
   fsProvider: IFilesystemProvider,
   hooksRootPath: string
@@ -1488,31 +1488,35 @@ async function readRemoteOrcaYaml(
   }
 }
 
-async function createRemoteSetupRunnerScript(
+export async function writeRemoteSetupRunnerScript(
   repo: Repo,
   worktreePath: string,
   script: string,
-  gitProvider: SshGitProvider,
+  runnerScriptPath: string,
   fsProvider: IFilesystemProvider,
-  projectStartupPolicy?: SetupAgentStartupPolicy
-): Promise<CreateWorktreeResult['setup']> {
+  projectStartupPolicy?: SetupAgentStartupPolicy,
+  privateFile?: { workspaceKey: string }
+): Promise<NonNullable<CreateWorktreeResult['setup']>> {
   const useWindowsFormat = isWindowsAbsolutePathLike(worktreePath)
-  // Why: SSH terminals choose their shell on the remote host; local Windows
-  // preferences cannot safely select a remote runner format or launch command.
-  const runnerRelativePath = useWindowsFormat ? 'orca/setup-runner.cmd' : 'orca/setup-runner.sh'
-  const { stdout } = await gitProvider.exec(
-    ['rev-parse', '--git-path', runnerRelativePath],
-    worktreePath
-  )
-  const runnerScriptPath = stdout.trim()
-  const runnerDir = useWindowsFormat
-    ? win32.dirname(runnerScriptPath)
-    : posix.dirname(runnerScriptPath)
-  await fsProvider.createDir(runnerDir)
-  await fsProvider.writeFile(
-    runnerScriptPath,
-    useWindowsFormat ? buildWindowsRunnerScript(script) : buildPosixRunnerScript(script)
-  )
+  const pathOps = useWindowsFormat ? win32 : posix
+  const runnerContent = useWindowsFormat
+    ? buildWindowsRunnerScript(script)
+    : buildPosixRunnerScript(script)
+  if (privateFile) {
+    if (!fsProvider.writePrivateFile) {
+      throw new Error(
+        'SSH relay does not support private jj setup runner storage; reconnect the host and retry setup.'
+      )
+    }
+    runnerScriptPath = await fsProvider.writePrivateFile(
+      privateFile.workspaceKey,
+      useWindowsFormat ? 'cmd' : 'sh',
+      runnerContent
+    )
+  } else {
+    await fsProvider.createDir(pathOps.dirname(runnerScriptPath))
+    await fsProvider.writeFile(runnerScriptPath, runnerContent)
+  }
   return {
     runnerScriptPath,
     envVars: getSetupRunnerEnvVars(repo, worktreePath),
@@ -1523,6 +1527,32 @@ async function createRemoteSetupRunnerScript(
       ? { waitForAgentStartup: true }
       : {})
   }
+}
+
+export async function createRemoteSetupRunnerScript(
+  repo: Repo,
+  worktreePath: string,
+  script: string,
+  gitProvider: SshGitProvider,
+  fsProvider: IFilesystemProvider,
+  projectStartupPolicy?: SetupAgentStartupPolicy
+): Promise<NonNullable<CreateWorktreeResult['setup']>> {
+  const useWindowsFormat = isWindowsAbsolutePathLike(worktreePath)
+  // Why: SSH terminals choose their shell on the remote host; local Windows
+  // preferences cannot safely select a remote runner format or launch command.
+  const runnerRelativePath = useWindowsFormat ? 'orca/setup-runner.cmd' : 'orca/setup-runner.sh'
+  const { stdout } = await gitProvider.exec(
+    ['rev-parse', '--git-path', runnerRelativePath],
+    worktreePath
+  )
+  return writeRemoteSetupRunnerScript(
+    repo,
+    worktreePath,
+    script,
+    stdout.trim(),
+    fsProvider,
+    projectStartupPolicy
+  )
 }
 
 async function resolveRemoteTrackingBaseSsh(

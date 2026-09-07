@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import { getRuntimePathBasename } from '../../shared/cross-platform-path'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import type { GitWorktreeInfo, Worktree } from '../../shared/worktree/types'
 import { DEFAULT_WORKSPACE_STATUS_ID } from '../../shared/workspace-statuses'
@@ -18,7 +19,9 @@ export function mergeWorktree(
   const branchShort = git.branch.replace(/^refs\/heads\//, '')
   const creatorProvenance = normalizeWorkspaceCreatorProvenance(meta?.creatorProvenance)
   const worktreeId = `${repoId}::${git.path}`
-  const automaticDisplayName = branchShort || defaultDisplayName || basename(git.path)
+  const automaticDisplayName = git.jjWorkspace
+    ? getRuntimePathBasename(git.path)
+    : branchShort || defaultDisplayName || basename(git.path)
   // CLI-created labels predate displayNameIsPinned but are still explicit names.
   const legacyCliDisplayNameIsPinned =
     meta?.displayNameIsPinned === undefined && meta?.cliProvenance?.kind === 'created-by-cli'
@@ -49,6 +52,7 @@ export function mergeWorktree(
     branch: git.branch,
     isBare: git.isBare,
     ...(git.isSparse === true ? { isSparse: true } : {}),
+    ...(git.jjWorkspace !== undefined ? { jjWorkspace: git.jjWorkspace } : {}),
     isMainWorktree: git.isMainWorktree,
     // Automatic labels follow the live branch; persisted values are only authoritative when pinned.
     displayName:
@@ -85,6 +89,7 @@ export function mergeWorktree(
       ? { automationProvenance: meta.automationProvenance }
       : {}),
     ...(meta?.cliProvenance !== undefined ? { cliProvenance: meta.cliProvenance } : {}),
+    ...(meta?.jjWorkspace !== undefined ? { jjWorkspace: meta.jjWorkspace } : {}),
     ...(meta?.pendingFirstAgentMessageRename !== undefined
       ? { pendingFirstAgentMessageRename: meta.pendingFirstAgentMessageRename }
       : {}),

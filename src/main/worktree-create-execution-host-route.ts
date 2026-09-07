@@ -17,11 +17,15 @@
  * explicit connection parameter and delete `repo.connectionId!` from it, which is a separate change.
  */
 
-import { getRepoExecutionHostId, type LOCAL_EXECUTION_HOST_ID } from '../shared/execution-host'
+import {
+  getRepoExecutionHostId,
+  parseExecutionHostId,
+  type LOCAL_EXECUTION_HOST_ID
+} from '../shared/execution-host'
 import type { Repo } from '../shared/repo-types'
 import {
   ExecutionHostNotDispatchableError,
-  resolveGitRouteForHost
+  UnresolvableExecutionHostError
 } from './providers/execution-host-provider-dispatch'
 
 export type WorktreeCreateRoute =
@@ -36,19 +40,22 @@ export type WorktreeCreateRoute =
   | { kind: 'runtime'; hostId: `runtime:${string}`; environmentId: string }
 
 export function resolveWorktreeCreateRoute(repo: Repo): WorktreeCreateRoute {
-  const route = resolveGitRouteForHost(getRepoExecutionHostId(repo))
-  switch (route.kind) {
+  const parsed = parseExecutionHostId(getRepoExecutionHostId(repo))
+  if (!parsed) {
+    throw new UnresolvableExecutionHostError(getRepoExecutionHostId(repo))
+  }
+  switch (parsed.kind) {
     case 'local':
-      return { kind: 'local', hostId: route.hostId }
+      return { kind: 'local', hostId: parsed.id }
     case 'ssh':
       return {
         kind: 'ssh',
-        hostId: route.hostId,
-        connectionId: route.connectionId,
-        repo: { ...repo, connectionId: route.connectionId }
+        hostId: parsed.id,
+        connectionId: parsed.targetId,
+        repo: { ...repo, connectionId: parsed.targetId }
       }
     case 'runtime':
-      return { kind: 'runtime', hostId: route.hostId, environmentId: route.environmentId }
+      return { kind: 'runtime', hostId: parsed.id, environmentId: parsed.environmentId }
   }
 }
 

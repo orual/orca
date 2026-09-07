@@ -64,6 +64,53 @@ describe('createBlankWorkspace', () => {
     expect('comment' in params).toBe(false)
   })
 
+  it('creates a jj workspace from the requested revision without Git fields', async () => {
+    const calls: Call[] = []
+    const client = fakeClient(() => ({ worktree: { id: 'jj-wt' } }), calls)
+
+    await createBlankWorkspace({
+      client,
+      repoId: 'jj-repo',
+      baseName: 'jj-workspace',
+      workspaceKind: 'jj',
+      jjStartRevision: '  main@  ',
+      createdWithAgentId: undefined,
+      comment: undefined,
+      setupDecision: 'inherit',
+      nameWasGenerated: false,
+      worktreeCreateIdempotency: IDEMPOTENT_CREATE_SUPPORT
+    })
+
+    expect(calls[0]?.params).toMatchObject({
+      repo: 'id:jj-repo',
+      workspaceKind: 'jj',
+      jjStartRevision: 'main@'
+    })
+    expect(calls[0]?.params).not.toHaveProperty('baseBranch')
+    expect(calls[0]?.params).not.toHaveProperty('compareBaseRef')
+    expect(calls[0]?.params).not.toHaveProperty('pushTarget')
+  })
+
+  it('defaults an empty jj revision to @', async () => {
+    const calls: Call[] = []
+    const client = fakeClient(() => ({ worktree: { id: 'jj-wt-default' } }), calls)
+
+    await createBlankWorkspace({
+      client,
+      repoId: 'jj-repo',
+      baseName: 'jj-workspace',
+      workspaceKind: 'jj',
+      jjStartRevision: '  ',
+      createdWithAgentId: undefined,
+      comment: undefined,
+      setupDecision: 'inherit',
+      nameWasGenerated: false,
+      worktreeCreateIdempotency: IDEMPOTENT_CREATE_SUPPORT
+    })
+
+    expect(calls[0]?.params).toMatchObject({ workspaceKind: 'jj', jjStartRevision: '@' })
+  })
+
   it('marks the name as generated only when the user typed nothing', async () => {
     // Why: the host retires generated names permanently; a name the user chose must stay reusable.
     const calls: Call[] = []

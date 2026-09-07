@@ -1,3 +1,5 @@
+import { decodeGitCQuotedPath } from './git-cquoted-path'
+
 export type NativeChatDiffLineKind = 'add' | 'del' | 'context' | 'meta'
 
 export type NativeChatDiffLine = {
@@ -138,6 +140,134 @@ export function diffFromToolCall(
   const combined = [...prefix, ...deleted, ...added]
   const truncated = oldLines.truncated || newLines.truncated || combined.length > maxLines
   return truncated ? [...combined.slice(0, maxLines - 1), DIFF_TRUNCATED_LINE] : combined
+}
+
+export function countUnifiedDiffLines(diff: string): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  let inHunk = false
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('@@')) {
+      inHunk = true
+      continue
+    }
+    if (!inHunk) {
+      continue
+    }
+    if (line.startsWith('+')) {
+      additions += 1
+    } else if (line.startsWith('-')) {
+      deletions += 1
+    }
+  }
+  return { additions, deletions }
+}
+
+export type UnifiedDiffFileStats = {
+  path: string
+  originalPath?: string
+  additions: number
+  deletions: number
+}
+
+export function parseUnifiedDiffFileStats(diff: string): UnifiedDiffFileStats[] {
+  const sections: UnifiedDiffFileStats[] = []
+  let sectionStart = -1
+  const lines = diff.split(/\r?\n/)
+  for (let index = 0; index <= lines.length; index += 1) {
+    const line = lines[index]
+    if (line?.startsWith('diff --git ')) {
+      if (sectionStart !== -1) {
+        const parsed = parseUnifiedDiffFileStatsSection(lines.slice(sectionStart, index))
+        if (parsed) {
+          sections.push(parsed)
+        }
+      }
+      sectionStart = index
+    }
+  }
+  if (sectionStart !== -1) {
+    const parsed = parseUnifiedDiffFileStatsSection(lines.slice(sectionStart))
+    if (parsed) {
+      sections.push(parsed)
+    }
+  }
+  return sections
+}
+
+function parseUnifiedDiffFileStatsSection(lines: string[]): UnifiedDiffFileStats | null {
+  const header = lines[0]
+  if (!header) {
+    return null
+  }
+  const headerPaths = parseGitDiffHeaderPaths(header)
+  if (!headerPaths) {
+    return null
+  }
+  const oldPath = decodeGitDiffHeaderPath(headerPaths[0], 'a/')
+  const newPath = decodeGitDiffHeaderPath(headerPaths[1], 'b/')
+  if (!oldPath || !newPath || lines.some((line) => line.startsWith('Binary files '))) {
+    return null
+  }
+  const renameFrom = lines.find((line) => line.startsWith('rename from '))
+  const renameTo = lines.find((line) => line.startsWith('rename to '))
+  const path = renameTo ? renameTo.slice('rename to '.length) : newPath
+  const originalPath = renameFrom ? renameFrom.slice('rename from '.length) : oldPath
+  if (path === '/dev/null' || !lines.some((line) => line.startsWith('@@'))) {
+    return null
+  }
+  const counts = countUnifiedDiffLines(lines.join('\n'))
+  return {
+    path,
+    ...(originalPath !== path && originalPath !== '/dev/null' ? { originalPath } : {}),
+    additions: counts.additions,
+    deletions: counts.deletions
+  }
+}
+
+function parseGitDiffHeaderPaths(header: string): [string, string] | null {
+  const value = header.slice('diff --git '.length)
+  if (value.startsWith('"')) {
+    const firstEnd = findCQuotedEnd(value)
+    if (firstEnd === -1) {
+      return null
+    }
+    const secondStart = value.indexOf('"', firstEnd + 1)
+    if (secondStart === -1) {
+      return null
+    }
+    const secondEnd = findCQuotedEnd(value, secondStart)
+    if (secondEnd === -1) {
+      return null
+    }
+    return [value.slice(0, firstEnd + 1), value.slice(secondStart, secondEnd + 1)]
+  }
+  const separator = value.indexOf(' b/')
+  if (separator === -1) {
+    return null
+  }
+  return [value.slice(0, separator), value.slice(separator + 1)]
+}
+
+function findCQuotedEnd(value: string, start = 0): number {
+  for (let index = start + 1; index < value.length; index += 1) {
+    if (value[index] !== '"') {
+      continue
+    }
+    let backslashes = 0
+    for (let previous = index - 1; previous >= start && value[previous] === '\\'; previous -= 1) {
+      backslashes += 1
+    }
+    if (backslashes % 2 === 0) {
+      return index
+    }
+  }
+  return -1
+}
+
+function decodeGitDiffHeaderPath(value: string, prefix: string): string {
+  const decoded = decodeGitCQuotedPath(value)
+  return decoded.startsWith(prefix) ? decoded.slice(prefix.length) : decoded
 }
 
 export function diffFromText(

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import { isFolderRepo } from '../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../../shared/repo-kind'
 import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { joinWorktreeRelativePath } from '../../runtime/runtime-relative-paths'
 import { parseOrcaYaml, hasHooksFile, loadHooks, hasUnrecognizedOrcaYamlKeys } from '../../hooks'
@@ -25,7 +25,7 @@ export function registerWorktreeHookCheckHandler(context: WorktreeIpcContext): v
           mayNeedUpdate: false
         }
       }
-      if (isFolderRepo(repo)) {
+      if (isFolderRepo(repo) || !isGitRepoKind(repo)) {
         return { status: 'ok', hasHooks: false, hooks: null, mayNeedUpdate: false }
       }
 

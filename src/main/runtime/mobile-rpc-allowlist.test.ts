@@ -135,6 +135,30 @@ describe('mobile RPC allowlist', () => {
     expect(missing).toEqual([])
   })
 
+  it('allows jj SCM operations without bypassing managed workspace removal', () => {
+    const allowed = mobileRpcAllowlist()
+    expect(
+      [
+        'jj.detect',
+        'jj.listWorkspaces',
+        'jj.addWorkspace',
+        'jj.listChanges',
+        'jj.readFileDiff',
+        'jj.getCurrentChangeMetadata',
+        'jj.listLocalBookmarks',
+        'jj.describe',
+        'jj.createBookmark',
+        'jj.moveBookmark',
+        'jj.listRemotes',
+        'jj.fetchRemote',
+        'jj.pushBookmark',
+        'jj.commit',
+        'jj.updateWorkspaceStale'
+      ].filter((method) => !allowed.has(method))
+    ).toEqual([])
+    expect(allowed.has('jj.removeWorkspace')).toBe(false)
+  })
+
   it('allows every cleanup RPC for mobile streaming subscriptions', () => {
     const allowed = mobileRpcAllowlist()
     const missing = MOBILE_STREAMING_CLEANUP_RPC_METHODS.filter((method) => !allowed.has(method))

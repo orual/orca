@@ -82,6 +82,12 @@ export function useCombinedDiffSectionRevalidation({
       if (hasRuntimeOwnerFilter && targetRuntimeOwner !== fileRuntimeOwner) {
         return
       }
+      if (detail.workspaceWide === true) {
+        for (const index of loadedIndicesRef.current) {
+          requestSectionReload(index)
+        }
+        return
+      }
       for (const area of ['unstaged', 'staged', 'untracked'] as const) {
         const key = getCombinedDiffFileTreeSectionKey('uncommitted', {
           path: detail.relativePath,
@@ -100,6 +106,7 @@ export function useCombinedDiffSectionRevalidation({
   }, [
     file.runtimeEnvironmentId,
     file.worktreeId,
+    loadedIndicesRef,
     requestSectionReload,
     sectionIndexByKeyRef,
     treeMode

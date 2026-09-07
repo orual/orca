@@ -18,6 +18,7 @@ export type DiffSource =
   | 'staged'
   | 'branch'
   | 'commit'
+  | 'jj'
   | 'combined-all'
   | 'combined-uncommitted'
   | 'combined-branch'
@@ -104,6 +105,8 @@ export type OpenFile = {
   /** Hash fragment to reveal when a preview tab opens from a link (`./guide.md#setup`); kept on tab state so repeat opens can retarget it. */
   markdownPreviewAnchor?: string
   diffSource?: DiffSource
+  /** Selected jj merge parent; absent means the backend's single-parent result. */
+  jjParentRevision?: string
   branchCompare?: BranchCompareSnapshot
   commitCompare?: CommitCompareSnapshot
   branchOldPath?: string

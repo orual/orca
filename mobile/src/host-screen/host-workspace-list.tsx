@@ -73,6 +73,21 @@ export function HostWorkspaceList({ controller }: { controller: HostScreenContro
         />
       )}
 
+      {state.jjRemovalNotice ? (
+        <View style={styles.removalNotice}>
+          <Text style={styles.removalNoticeTitle}>
+            {state.jjRemovalNotice.kind === 'uncertain'
+              ? 'Cleanup outcome is uncertain'
+              : 'JJ cleanup failed'}
+          </Text>
+          <Text style={styles.removalNoticeText}>
+            {state.jjRemovalNotice.kind === 'uncertain'
+              ? 'Refresh the host before trying again. The request may have completed.'
+              : state.jjRemovalNotice.message}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Search bar */}
       {state.showSearch && (
         <View style={styles.searchBar}>

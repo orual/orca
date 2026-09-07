@@ -1,5 +1,5 @@
 import { getRepoExecutionHostId } from '../../shared/execution-host'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import type { Repo } from '../../shared/repo-types'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
 import { prepareLocalWorktreeRootForRepo } from '../worktree-root-preparation'
@@ -58,6 +58,9 @@ export class RuntimeRepositorySettingsController {
     const repo = await this.deps.resolveRepo(repoSelector)
     if (isFolderRepo(repo)) {
       throw new Error('Folder mode does not support base refs.')
+    }
+    if (!isGitRepoKind(repo)) {
+      throw new Error('unsupported_repo_kind')
     }
     const updated = store.updateRepo(repo.id, { worktreeBaseRef: baseRef })
     if (!updated) {

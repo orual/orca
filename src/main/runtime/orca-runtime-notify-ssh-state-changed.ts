@@ -122,9 +122,10 @@ export class OrcaRuntimeWithNotifySshStateChanged extends OrcaRuntimeWithGetStat
     this.emitClientEvent({ type: 'worktreesChanged', repoId })
   }
 
-  // Why: structural catalog changes require a fresh Git scan; renderer metadata edits do not.
+  // Why: structural catalog changes require a fresh host-owned scan; renderer metadata edits do not.
   notifyWorktreeCatalogChangedForRemoteClients(repoId: string): void {
     this.invalidateWorktreeScanCacheForRepo(repoId)
+    this.invalidateResolvedWorktreeCache()
     const matchingRepos = this.store?.getRepos().filter((repo) => repo.id === repoId) ?? []
     if (matchingRepos.length !== 1 || matchingRepos[0]?.connectionId) {
       return

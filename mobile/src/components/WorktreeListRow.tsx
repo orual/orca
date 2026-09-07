@@ -13,6 +13,7 @@ import { parseExecutionHostId, type ExecutionHostId } from '../../../src/shared/
 import type { RepoIcon } from '../../../src/shared/repo-icon'
 import type { AgentWorkingMode } from '../../../src/shared/agent-status-types'
 import type { RuntimeWorktreeAgentRow } from '../../../src/shared/runtime-types'
+import type { JjWorkspaceMetadata } from '../../../src/shared/worktree/types'
 import { triggerMediumImpact } from '../platform/haptics'
 import { colors, radii, spacing, typography } from '../theme/mobile-theme'
 import { AgentSpinner } from './AgentSpinner'
@@ -29,7 +30,8 @@ function displayBranch(branch: string): string {
 // Minimal row shape needed for rendering — a structural subset of the screen's
 // Worktree so this component stays decoupled from the screen's local type.
 export type WorktreeListRowItem = {
-  workspaceKind?: 'git' | 'folder-workspace'
+  workspaceKind?: 'git' | 'jj' | 'folder-workspace'
+  jjWorkspace?: JjWorkspaceMetadata
   worktreeId: string
   hostId?: ExecutionHostId
   /** Present only when the list spans hosts; names the host this row runs on. */
@@ -87,8 +89,14 @@ function WorktreeListRowComponent<T extends WorktreeListRowItem>({
   onToggleLineage
 }: Props<T>) {
   const isFolderWorkspace = item.workspaceKind === 'folder-workspace'
+  const isJjWorkspace = item.workspaceKind === 'jj'
   const folderMeta = item.comment?.trim() || item.path || 'Folder'
-  const metaText = isFolderWorkspace ? folderMeta : displayBranch(item.branch)
+  const jjMeta = item.jjWorkspace?.name?.trim() || item.displayName || 'Workspace'
+  const metaText = isFolderWorkspace
+    ? folderMeta
+    : isJjWorkspace
+      ? jjMeta
+      : displayBranch(item.branch)
   const lineageDepth = Math.max(0, item.lineageDepth ?? 0)
   const lineageChildCount = item.lineageChildCount ?? 0
 

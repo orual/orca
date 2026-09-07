@@ -9,7 +9,8 @@ import type {
   GitWorktreeInfo,
   WorkspaceLinkedItem,
   WorkspaceStatus,
-  Worktree
+  Worktree,
+  JjCleanupPending
 } from './types'
 import type { WorkspaceLineage, WorktreeLineage, WorktreeLineageWarning } from './lineage-types'
 import type {
@@ -90,6 +91,10 @@ export type SparsePreset = {
 export type CreateWorktreeArgs = {
   repoId: string
   name: string
+  /** Creation provider selected by the composer; the host validates it against the repo kind. */
+  workspaceKind?: 'jj'
+  /** Start revision for a jj workspace. Defaults to `@` when omitted. */
+  jjStartRevision?: string
   /** True only when `name` came from Orca's creature-name generator rather than the user. Gates
    *  name retirement: a generated name is never reissued, but `Orca`, `Runner` and `Molly` are all
    *  in that pool, so a name the user typed must stay reusable. Defaults to false, which keeps
@@ -207,6 +212,7 @@ export type PreservedWorktreeBranch = {
 
 export type RemoveWorktreeResult = {
   preservedBranch?: PreservedWorktreeBranch
+  jjCleanupPending?: JjCleanupPending
 }
 
 export type ForceDeleteWorktreeBranchResult = {

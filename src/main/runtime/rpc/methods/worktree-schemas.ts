@@ -171,7 +171,8 @@ export const WorktreeRemove = WorktreeSelector.extend({
   // desktop sets `force` for an ordinary confirmed delete too, so the PTY-stop
   // waiver travels on its own field.
   allowUnverifiedPtyStop: OptionalBoolean,
-  runHooks: OptionalBoolean
+  runHooks: OptionalBoolean,
+  jjRemoval: z.enum(['forget', 'forget-and-delete', 'cleanup-only']).optional()
 })
 
 export const WorktreeForceDeleteBranch = WorktreeSelector.extend({

@@ -4,13 +4,15 @@ import { isHostedTaskRepo, reconcileRepoSelection } from './hosted-repo-selectio
 const repos = [
   { id: 'a', kind: 'worktree' },
   { id: 'b', kind: 'worktree' },
-  { id: 'folder', kind: 'folder' }
+  { id: 'folder', kind: 'folder' },
+  { id: 'jj', kind: 'jj' }
 ]
 
 describe('isHostedTaskRepo', () => {
   it('excludes folder workspaces and keeps everything else', () => {
     expect(repos.filter(isHostedTaskRepo).map((repo) => repo.id)).toEqual(['a', 'b'])
     expect(isHostedTaskRepo({ id: 'no-kind' })).toBe(true)
+    expect(isHostedTaskRepo({ id: 'jj', kind: 'jj' })).toBe(false)
   })
 })
 
@@ -30,7 +32,8 @@ describe('reconcileRepoSelection', () => {
     expect(reconcileRepoSelection(repos, ['gone'])).toEqual(new Set())
   })
 
-  it('never selects a folder workspace', () => {
+  it('never selects a folder or jj workspace', () => {
     expect(reconcileRepoSelection(repos, ['folder'])).toEqual(new Set())
+    expect(reconcileRepoSelection(repos, ['jj'])).toEqual(new Set())
   })
 })

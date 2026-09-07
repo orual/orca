@@ -17,6 +17,8 @@ import type { RuntimeNavigationTarget } from '../../shared/runtime-navigation'
 export type RuntimeManagedWorktreeCreateArgs = {
   repoSelector: string
   name: string
+  workspaceKind?: 'jj'
+  jjStartRevision?: string
   nameWasGenerated?: boolean
   navigation?: RuntimeNavigationTarget
   baseBranch?: string

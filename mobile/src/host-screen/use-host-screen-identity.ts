@@ -14,6 +14,7 @@ export function useHostScreenIdentity(args: {
   const { client, hostId, state } = args
   const {
     clientRef,
+    currentHostIdRef,
     repoMetadataFetchedAtRef,
     setCatalogError,
     setError,
@@ -21,6 +22,9 @@ export function useHostScreenIdentity(args: {
     setHostName,
     setHostPlatform,
     setLastKnownWorktrees,
+    setPendingJjCleanupByIdentity,
+    setJjRemovalInFlight,
+    setJjRemovalNotice,
     setPinnedIds,
     setRepoColorsByName,
     setRepoHostIdByRepoId,
@@ -50,7 +54,13 @@ export function useHostScreenIdentity(args: {
   // Why: mirror client into a ref so imperative call sites read it without re-subscribing.
   useEffect(() => {
     clientRef.current = client
-  }, [client])
+    // A replaced transport supersedes any removal still awaiting the old client.
+    setJjRemovalInFlight(null)
+  }, [client, setJjRemovalInFlight])
+
+  useEffect(() => {
+    currentHostIdRef.current = hostId
+  }, [hostId])
 
   useEffect(() => {
     setHostName('')
@@ -60,6 +70,9 @@ export function useHostScreenIdentity(args: {
     setRepoHostIdByRepoId(new Map())
     setHostLabelById(new Map())
     setHostPlatform(null)
+    setPendingJjCleanupByIdentity(new Map())
+    setJjRemovalInFlight(null)
+    setJjRemovalNotice(null)
     repoMetadataFetchedAtRef.current = 0
     // Why: useState initializer runs only on first mount, so re-seed the cache when Expo Router reuses this screen for a new hostId.
     const freshCache = hostId ? (getCachedWorktrees(hostId) as Worktree[] | null) : null

@@ -8,7 +8,7 @@ import { useFolderWorkspaceComposerPathStatus } from '@/components/sidebar/folde
 import { useDetectedAgents } from '@/hooks/useDetectedAgents'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import { resolveWorkspaceCreationTarget } from '@/lib/project-host-workspace-target'
-import { isGitRepoKind } from '../../../../shared/repo-kind'
+import { isGitRepoKind, isJjRepo } from '../../../../shared/repo-kind'
 import { CLIENT_PLATFORM } from '@/lib/new-workspace'
 import { getLocalRepoProjectExecutionRuntimeContext } from '@/lib/local-preflight-context'
 import { getAgentLaunchPlatformForRepo } from '@/lib/agent-launch-platform'
@@ -120,6 +120,7 @@ export function useComposerRuntimeTargetSelection(input: ComposerRuntimeTargetSe
       : eligibleRepos.find((repo) => repo.id === repoId)
 
   const selectedRepoIsGit = selectedRepo ? isGitRepoKind(selectedRepo) : false
+  const selectedRepoIsJj = selectedRepo ? isJjRepo(selectedRepo) : false
 
   const selectedRepoExecutionHostId = selectedRepo ? getRepoExecutionHostId(selectedRepo) : null
 
@@ -263,6 +264,7 @@ export function useComposerRuntimeTargetSelection(input: ComposerRuntimeTargetSe
     selectedWorkspaceTarget,
     selectedRepo,
     selectedRepoIsGit,
+    selectedRepoIsJj,
     selectedRepoExecutionHostId,
     selectedRepoHookContextKey,
     selectedRepoAgentLaunchPlatform,

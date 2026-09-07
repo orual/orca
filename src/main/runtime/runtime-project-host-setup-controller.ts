@@ -13,6 +13,7 @@ import type {
   ProjectUpdateArgs
 } from '../../shared/project-types'
 import type { Repo } from '../../shared/repo-types'
+import { isJjRepo } from '../../shared/repo-kind'
 import {
   getSshTargetIdForExecutionHost,
   parseExecutionHostId,
@@ -27,13 +28,13 @@ import type { RuntimeStore } from './runtime-store-contract'
 type RuntimeProjectHostSetupDependencies = {
   getStore: () => RuntimeStore | null
   listRepos: () => Repo[]
-  addRepo: (path: string, kind: 'folder' | 'git', hostId: ExecutionHostId) => Promise<Repo>
+  addRepo: (path: string, kind: 'folder' | 'git' | 'jj', hostId: ExecutionHostId) => Promise<Repo>
   /** Register an existing path that lives on an SSH host; `addRepo` only reaches local/runtime hosts. */
   addRemoteRepo: (args: {
     connectionId: string
     remotePath: string
     displayName?: string
-    kind: 'folder' | 'git'
+    kind: 'folder' | 'git' | 'jj'
   }) => Promise<Repo>
   cloneRepo: (url: string, destination: string, hostId: ExecutionHostId) => Promise<Repo>
   invalidateResolvedWorktrees: () => void
@@ -97,7 +98,7 @@ export class RuntimeProjectHostSetupController {
     if (!this.deps.getStore()) {
       throw new Error('runtime_unavailable')
     }
-    const kind = args.kind === 'folder' ? 'folder' : 'git'
+    const kind = args.kind ?? 'git'
     const knownRepoIds = new Set(this.deps.listRepos().map((repo) => repo.id))
     // Why route rather than refuse: this process owns the SSH connection, and its own IPC handler
     // already registers `ssh:*` hosts correctly. Refusing here only made the CLI and runtime RPC
@@ -183,6 +184,11 @@ export class RuntimeProjectHostSetupController {
     let repo = initialRepo
     let setup = getProjectHostSetupForRepo(this.listSetups(), repo)
     if (setup.projectId !== args.projectId) {
+      if (isJjRepo(repo)) {
+        throw new Error(
+          'Jujutsu repositories cannot be relinked by rewriting Git provider identity. Select a matching project or configure identity in jj.'
+        )
+      }
       const existingProject = this.listProjects().find((project) => project.id === args.projectId)
       const identity = existingProject?.providerIdentity ?? args.projectProviderIdentity
       if (!identity || getProjectIdForProviderIdentity(identity) !== args.projectId) {

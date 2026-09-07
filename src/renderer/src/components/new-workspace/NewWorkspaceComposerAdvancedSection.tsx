@@ -35,6 +35,9 @@ type NewWorkspaceComposerAdvancedSectionProps = Pick<
   | 'name'
   | 'onNameValueChange'
   | 'selectedRepoIsGit'
+  | 'selectedRepoIsJj'
+  | 'jjStartRevision'
+  | 'onJjStartRevisionChange'
   | 'branchesEnabled'
   | 'branchNameOverride'
   | 'onBranchNameOverrideChange'
@@ -76,6 +79,9 @@ export function NewWorkspaceComposerAdvancedSection({
   name,
   onNameValueChange,
   selectedRepoIsGit,
+  selectedRepoIsJj = false,
+  jjStartRevision = '@',
+  onJjStartRevisionChange,
   branchesEnabled = true,
   branchNameInputId,
   branchNameOverride,
@@ -173,6 +179,24 @@ export function NewWorkspaceComposerAdvancedSection({
                   'auto.components.NewWorkspaceComposerCard.0ee17638fe',
                   'Workspace name'
                 )}
+                className="w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              />
+            </div>
+          ) : null}
+
+          {selectedRepoIsJj ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                {translate(
+                  'auto.components.NewWorkspaceComposerCard.jjStartRevision',
+                  'Start revision'
+                )}
+              </label>
+              <input
+                type="text"
+                value={jjStartRevision}
+                onChange={(event) => onJjStartRevisionChange?.(event.target.value)}
+                placeholder="@"
                 className="w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
               />
             </div>

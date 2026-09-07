@@ -33,6 +33,7 @@ export type ComposerRuntimeTargetModel = {
   selectedWorkspaceTarget: WorkspaceCreationTargetResolution
   selectedRepo: Repo | undefined
   selectedRepoIsGit: boolean
+  selectedRepoIsJj: boolean
   selectedRepoExecutionHostId: ExecutionHostId | null
   selectedRepoHookContextKey: string | null
   selectedRepoAgentLaunchPlatform: NodeJS.Platform

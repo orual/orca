@@ -11,7 +11,7 @@ export type RepoSummary = {
   displayName: string
   path: string
   badgeColor?: string
-  kind?: 'git' | 'folder'
+  kind?: 'git' | 'jj' | 'folder'
   connectionId?: string | null
   issueSourcePreference?: IssueSourcePreference
   /** Fork parent resolved by the host; drives upstream Project row matching. */

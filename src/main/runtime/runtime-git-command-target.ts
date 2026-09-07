@@ -1,6 +1,7 @@
 import { LOCAL_EXECUTION_HOST_ID, type ExecutionHostId } from '../../shared/execution-host'
 import type { GlobalSettings } from '../../shared/global-settings-types'
 import type { Repo } from '../../shared/repo-types'
+import { isGitRepoKind } from '../../shared/repo-kind'
 import type { GitPushTarget, GitWorktreeInfo, Worktree } from '../../shared/worktree/types'
 import type { GitRuntimeOptions } from '../git/git-runtime-options'
 import {
@@ -35,6 +36,12 @@ export type RuntimeGitTarget = {
   localGitOptions?: GitRuntimeOptions
 }
 
+export function assertRuntimeGitRepo(target: RuntimeGitTarget): void {
+  if (target.repo && !isGitRepoKind(target.repo)) {
+    throw new Error('unsupported_repo_kind')
+  }
+}
+
 export type RuntimeGitCommandHost = {
   resolveRuntimeGitTarget(selector: string): Promise<RuntimeGitTarget>
   getRuntimeSettings(): GlobalSettings
@@ -64,6 +71,7 @@ export type RuntimeGitRoute =
   | { kind: 'ssh'; connectionId: string; provider: SshGitProvider | null }
 
 export function runtimeGitRouteForTarget(target: RuntimeGitTarget): RuntimeGitRoute {
+  assertRuntimeGitRepo(target)
   const route = resolveGitRouteForHost(target.executionHostId)
   switch (route.kind) {
     case 'local':

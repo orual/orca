@@ -18,6 +18,8 @@ import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { listStoredWorktreeRowsForRepo } from './repo-worktree-row-resolution'
 import type { ResolvedWorktree } from './runtime-worktree-path-identity'
 import { getRepoExecutionHostId, getRepoSshConnectionId } from '../../shared/execution-host'
+import { isJjRepo } from '../../shared/repo-kind'
+import { listJjWorkspacesForRepo, buildJjWorktreeInfos } from '../jj/jj-workspace-catalog'
 
 export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListKnownResolvedWorktreesForExplicitTarget {
   /**
@@ -94,6 +96,22 @@ export class OrcaRuntimeWithRefreshRepoWorktreeScan extends OrcaRuntimeWithListK
     repo: Repo,
     projectRuntime: ProjectExecutionRuntimeResolution | undefined
   ): Promise<RuntimeWorktreeScanResult> {
+    if (isJjRepo(repo)) {
+      const result = await listJjWorkspacesForRepo(
+        repo,
+        projectRuntime?.status === 'resolved' && projectRuntime.runtime.kind === 'wsl'
+          ? { wslDistro: projectRuntime.runtime.distro }
+          : {}
+      )
+      const worktrees = this.store ? buildJjWorktreeInfos(this.requireStore(), repo, result) : []
+      return {
+        provider: 'jj',
+        ok: result.ok,
+        complete: result.ok && result.complete,
+        workspaces: result.workspaces,
+        worktrees
+      }
+    }
     // Why not `repo.connectionId`: SSH ownership has two spellings, and a repo carrying only
     // `executionHostId: 'ssh:*'` would otherwise be scanned on the client against a remote path —
     // `git worktree list` then reports nothing, so the remote worktrees never resolve at all.

@@ -3,6 +3,7 @@ import { RpcDispatcher } from '../dispatcher'
 import type { RpcRequest } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { WORKTREE_METHODS } from './worktree'
+import { JJ_REPO_KIND_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
 
 // The watermark rides alongside the names rather than being expanded into them; a client
 // predating the field reads the names only and under-retires the compacted tiers.
@@ -26,6 +27,27 @@ describe('worktree.listRetiredNames', () => {
 
     const response = await new RpcDispatcher({ runtime, methods: WORKTREE_METHODS }).dispatch(
       request
+    )
+
+    expect(runtime.listRetiredWorktreeNames).toHaveBeenCalledWith('id:repo-1', {
+      excludeRepoKinds: ['jj']
+    })
+    expect(response).toMatchObject({ ok: true, result: RETIRED })
+  })
+
+  it('does not add the internal exclusion for jj-capable clients', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      listRetiredWorktreeNames: vi.fn().mockResolvedValue(RETIRED)
+    } as unknown as OrcaRuntimeService
+    const response = await new RpcDispatcher({ runtime, methods: WORKTREE_METHODS }).dispatch(
+      {
+        id: 'req-2',
+        authToken: 'tok',
+        method: 'worktree.listRetiredNames',
+        params: { repo: 'id:repo-1' }
+      },
+      { clientCapabilities: [JJ_REPO_KIND_RUNTIME_CAPABILITY] }
     )
 
     expect(runtime.listRetiredWorktreeNames).toHaveBeenCalledWith('id:repo-1')

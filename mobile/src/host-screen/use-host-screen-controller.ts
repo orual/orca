@@ -15,6 +15,7 @@ import {
 } from '../transport/client-context-connection-metrics'
 import { applyWorktreeRowDisplayState } from '../worktree/worktree-host-row-identity'
 import { applyWorktreeHostContextLabels } from '../worktree/worktree-host-context-labels'
+import { mergePendingJjWorktrees } from './jj-worktree-removal'
 import { useWorkspaceSections } from '../worktree/use-workspace-sections'
 import { useHostRepoMetadata } from './use-host-repo-metadata'
 import { useHostScreenIdentity } from './use-host-screen-identity'
@@ -96,8 +97,17 @@ export function useHostScreenController({
     // Why: live `worktrees` is authoritative only while connected; under the amber
     // mount default, connecting/handshaking must keep the pre-reconnect list too.
     const base = connState === 'connected' ? state.worktrees : state.lastKnownWorktrees
+    const withPendingJjCleanup = mergePendingJjWorktrees(
+      base,
+      state.pendingJjCleanupByIdentity,
+      state.repoHostIdByRepoId
+    )
     return applyWorktreeHostContextLabels(
-      applyWorktreeRowDisplayState(base, state.sleptIds, state.optimisticActiveWorktreeIdentity),
+      applyWorktreeRowDisplayState(
+        withPendingJjCleanup,
+        state.sleptIds,
+        state.optimisticActiveWorktreeIdentity
+      ),
       {
         repoHostIdByRepoId: state.repoHostIdByRepoId,
         hostLabelById: state.hostLabelById,
@@ -112,7 +122,8 @@ export function useHostScreenController({
     state.optimisticActiveWorktreeIdentity,
     state.repoHostIdByRepoId,
     state.hostLabelById,
-    state.hostPlatform
+    state.hostPlatform,
+    state.pendingJjCleanupByIdentity
   ])
   const sectionsResult = useWorkspaceSections({
     displayWorktrees,

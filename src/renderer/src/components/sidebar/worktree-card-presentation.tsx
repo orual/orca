@@ -26,7 +26,6 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
     compactCards,
     isFolder,
     detachedHeadDisplay,
-    branch,
     identityDisplay,
     folderMetaRowContent,
     showIdentityInNewCard,
@@ -81,9 +80,9 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
   const showDetachedHeadInMetaRow = !compactCards && !isFolder && detachedHeadDisplay !== null
   const showBranch =
     !isFolder &&
-    branch.length > 0 &&
+    Boolean(identityDisplay) &&
     !newCardStyle &&
-    (!compactCards || branch !== worktree.displayName)
+    (!compactCards || identityDisplay !== worktree.displayName)
   // Why: rebases already surface in source control, so dense cards skip the persistent rebase chip.
   const showConflictOperationBadge =
     !!conflictOperation && conflictOperation !== 'unknown' && conflictOperation !== 'rebase'
@@ -120,7 +119,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
   const hoverBranchName = newCardStyle
     ? identityDisplay
     : showBranchIdentityHover
-      ? branch
+      ? identityDisplay
       : undefined
   const hoverWorkspaceTitle =
     trimmedVisibleCardTitle.length > 0 && trimmedVisibleCardTitle !== hoverBranchName
@@ -155,7 +154,7 @@ export function buildWorktreeCardPresentation(card: WorktreeCardController) {
             comment={metaComment}
             automationProvenance={metaAutomationProvenance}
             cliProvenance={metaCliProvenance}
-            branchName={showBranchIdentityHover ? branch : undefined}
+            branchName={showBranchIdentityHover ? identityDisplay : undefined}
             workspaceTitle={worktree.displayName}
             identityOrder="branch-first"
             detailsAfter={hasPorts ? <WorktreeCardPortsDetails ports={workspacePorts} /> : null}

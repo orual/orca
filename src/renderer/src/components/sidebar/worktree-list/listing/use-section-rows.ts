@@ -27,6 +27,7 @@ type SectionRowsArgs = {
   pinnedDisplayPolicy: PinnedWorktreeDisplayPolicy
   defaultHostId: ExecutionHostId
   worktrees: Worktree[]
+  worktreesByRepo: Readonly<Record<string, Worktree[]>>
   repos: readonly Repo[]
   repoMap: Map<string, Repo>
   worktreeMap: Map<string, Worktree>
@@ -69,8 +70,8 @@ function collectRenderedSidebarRowKeys(sectionRows: ReturnType<typeof addHostSec
 // Builds the full sidebar row model: grouped worktree rows first, then the host-section
 // tier wrapped around them.
 export function useSidebarSectionRows(args: SectionRowsArgs) {
-  const { repos, worktrees, repoMap, effectiveCollapsedGroups, defaultHostId } = args
-  const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
+  const { repos, worktrees, worktreesByRepo, repoMap, effectiveCollapsedGroups, defaultHostId } =
+    args
   const sshTargetLabels = useAppStore((s) => s.sshTargetLabels)
   const sshConnectionStates = useAppStore((s) => s.sshConnectionStates)
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)

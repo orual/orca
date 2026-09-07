@@ -108,13 +108,14 @@ vi.mock('./WorktreeTitleInlineRename', () => ({
 
 import WorktreeCard from './WorktreeCard'
 
-function makeRepo(): Repo {
+function makeRepo(overrides: Partial<Repo> = {}): Repo {
   return {
     id: 'repo-1',
     path: '/repo',
     displayName: 'orca',
     badgeColor: '#999999',
-    addedAt: 1
+    addedAt: 1,
+    ...overrides
   }
 }
 
@@ -206,6 +207,85 @@ describe('WorktreeCard affiliate list mode', () => {
 
     expect(testDoubles.activateWorktreeFromSidebar).toHaveBeenCalledWith(
       'repo-1::/repo/worktrees/affiliate',
+      'local'
+    )
+  })
+
+  it('renders and activates a verified jj main workspace through the shared host target', () => {
+    const mainJjWorkspace = makeWorktree({
+      id: 'repo-1::/repo',
+      path: '/repo',
+      displayName: 'main',
+      branch: '',
+      isMainWorktree: true,
+      hostId: 'local'
+    })
+
+    act(() => {
+      root.render(
+        <WorktreeCard
+          worktree={mainJjWorkspace}
+          repo={makeRepo({ kind: 'jj' })}
+          isActive={false}
+          flushSurface
+        />
+      )
+    })
+
+    const surface = container.querySelector<HTMLElement>('[data-worktree-card-surface="true"]')
+    expect(surface?.textContent).toContain('main')
+    act(() => {
+      surface?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(testDoubles.activateWorktreeFromSidebar).toHaveBeenCalledWith('repo-1::/repo', 'local')
+  })
+
+  it('renders the jj owner and sibling labels and activates each host-qualified row', () => {
+    const owner = makeWorktree({
+      id: 'repo-1::/repo',
+      path: '/repo',
+      displayName: 'default',
+      branch: '',
+      isMainWorktree: true,
+      hostId: 'local',
+      jjWorkspace: { name: 'default', root: '/repo', rootResolved: true }
+    })
+    const sibling = makeWorktree({
+      id: 'repo-1::/repo/feature-o',
+      path: '/repo/feature-o',
+      displayName: 'feature-o',
+      branch: '',
+      isMainWorktree: false,
+      hostId: 'local',
+      jjWorkspace: { name: 'feature-o', root: '/repo/feature-o', rootResolved: true }
+    })
+
+    act(() => {
+      root.render(
+        <>
+          <WorktreeCard worktree={owner} repo={makeRepo({ kind: 'jj' })} isActive={false} />
+          <WorktreeCard worktree={sibling} repo={makeRepo({ kind: 'jj' })} isActive={false} />
+        </>
+      )
+    })
+
+    const surfaces = container.querySelectorAll<HTMLElement>('[data-worktree-card-surface="true"]')
+    expect(surfaces).toHaveLength(2)
+    expect(surfaces[1]?.textContent).toContain('feature-o')
+
+    act(() => {
+      surfaces[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      surfaces[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(testDoubles.activateWorktreeFromSidebar).toHaveBeenNthCalledWith(
+      1,
+      'repo-1::/repo',
+      'local'
+    )
+    expect(testDoubles.activateWorktreeFromSidebar).toHaveBeenNthCalledWith(
+      2,
+      'repo-1::/repo/feature-o',
       'local'
     )
   })

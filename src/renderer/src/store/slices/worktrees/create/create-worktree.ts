@@ -151,6 +151,8 @@ export function createCreateWorktree(
       linkedAzureDevOpsPR,
       linkedGiteaPR,
       compareBaseRef,
+      workspaceKind: options?.workspaceKind,
+      jjStartRevision: options?.jjStartRevision,
       options
     }
     try {

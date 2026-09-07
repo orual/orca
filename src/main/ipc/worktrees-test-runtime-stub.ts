@@ -14,6 +14,7 @@ export type WorktreeRuntimeStub = {
   createTerminal: ReturnType<typeof vi.fn>
   splitTerminal: ReturnType<typeof vi.fn>
   notifyWorktreesChangedForRemoteClients: ReturnType<typeof vi.fn>
+  notifyWorktreeCatalogChangedForRemoteClients: ReturnType<typeof vi.fn>
   closeFileWatchersForRemoval: ReturnType<typeof vi.fn>
   acquireFileWatcherRemoval: ReturnType<typeof vi.fn>
   hydrateInferredWorktreeLineage: ReturnType<typeof vi.fn>
@@ -44,6 +45,7 @@ export function createWorktreeRuntimeStub(): WorktreeRuntimeStub {
       paneRuntimeId: -1
     }),
     notifyWorktreesChangedForRemoteClients: vi.fn(),
+    notifyWorktreeCatalogChangedForRemoteClients: vi.fn(),
     closeFileWatchersForRemoval: vi.fn().mockResolvedValue(undefined),
     acquireFileWatcherRemoval: vi.fn(),
     hydrateInferredWorktreeLineage: vi.fn().mockResolvedValue(undefined)

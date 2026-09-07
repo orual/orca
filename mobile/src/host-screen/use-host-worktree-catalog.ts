@@ -37,6 +37,7 @@ export function useHostWorktreeCatalog(args: {
     fetchWorktreesInFlightRef,
     newWorktreeModalVisibleRef,
     setCatalogError,
+    setJjRemovalNotice,
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
     setPinnedIds,
@@ -84,6 +85,8 @@ export function useHostWorktreeCatalog(args: {
         const confirmed = worktreeCatalogRef.current.admit(fetched.pending)
         if (confirmed) {
           setCatalogError(null)
+          // A successful admitted snapshot is the only evidence that clears an uncertain removal lock.
+          setJjRemovalNotice((notice) => (notice?.kind === 'uncertain' ? null : notice))
           // Why: reuse the existing array on identical snapshots to keep SectionList/sort rebuilds off the tap path.
           setWorktrees((current) =>
             areWorktreeListsEqual(current, confirmed) ? current : confirmed
@@ -125,7 +128,7 @@ export function useHostWorktreeCatalog(args: {
         fetchWorktreesInFlightRef.current = false
       }
     },
-    [client, connState, hostId]
+    [client, connState, hostId, setJjRemovalNotice]
   )
 
   useFocusEffect(

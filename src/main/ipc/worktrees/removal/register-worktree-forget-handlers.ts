@@ -8,7 +8,7 @@ import { resolveWorktreeRemovalRepoOwner } from '../../../worktree-removal-repo-
 import { getRepoExecutionHostId, parseExecutionHostId } from '../../../../shared/execution-host'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 import type { Repo } from '../../../../shared/repo-types'
-import { isFolderRepo } from '../../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../../../shared/repo-kind'
 import { getSshPtyProvider, getLocalPtyProvider, clearProviderPtyState } from '../../pty'
 import { killAllProcessesForWorktree } from '../../../runtime/worktree-teardown'
 import { invalidateAuthorizedRootsCache } from '../../registered-worktree-roots-cache'
@@ -53,6 +53,9 @@ export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): voi
         )
       }
       const repo = repoOwner.kind === 'resolved' ? repoOwner.repo : undefined
+      if (repo && !isFolderRepo(repo) && !isGitRepoKind(repo)) {
+        throw new Error('unsupported_repo_kind')
+      }
       // Repo-first (unlike owner resolution below) so this key matches worktrees:remove's; meta only covers ownerless forgets.
       const inFlightKey = getWorktreeRemovalInFlightKey(
         args.worktreeId,
@@ -172,6 +175,9 @@ export function registerWorktreeForgetHandlers(context: WorktreeIpcContext): voi
       }
       if (isFolderRepo(repo)) {
         throw new Error('Folder workspaces do not have local Git branches.')
+      }
+      if (!isGitRepoKind(repo)) {
+        throw new Error('unsupported_repo_kind')
       }
 
       if (repo.connectionId) {

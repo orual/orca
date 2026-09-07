@@ -161,7 +161,7 @@ export type RepoSlice = {
   addRepo: () => Promise<Repo | null>
   addRepoPath: (
     path: string,
-    kind?: 'git' | 'folder',
+    kind?: 'git' | 'folder' | 'jj',
     options?: AddRepoPathOptions
   ) => Promise<Repo | null>
   setupProjectExistingFolder: (

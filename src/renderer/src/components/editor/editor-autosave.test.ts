@@ -189,6 +189,33 @@ describe('isExternalReloadableEditorTab', () => {
 })
 
 describe('getOpenFilesForExternalFileChange', () => {
+  it('matches every reloadable tab in an owner-scoped workspace notification', () => {
+    const matchingEdit = makeOpenFile()
+    const matchingCombined = makeOpenFile({
+      id: 'wt-1::all-diffs::uncommitted',
+      filePath: '/repo',
+      relativePath: 'All Changes',
+      mode: 'diff',
+      diffSource: 'combined-uncommitted'
+    })
+    const dirtyEdit = makeOpenFile({ id: 'dirty', isDirty: true })
+    const otherOwner = makeOpenFile({ id: 'other-owner', runtimeEnvironmentId: 'env-2' })
+    const otherWorktree = makeOpenFile({ id: 'other-worktree', worktreeId: 'wt-2' })
+
+    expect(
+      getOpenFilesForExternalFileChange(
+        [matchingEdit, matchingCombined, dirtyEdit, otherOwner, otherWorktree],
+        {
+          worktreeId: 'wt-1',
+          worktreePath: '/repo',
+          relativePath: '',
+          runtimeEnvironmentId: null,
+          workspaceWide: true
+        }
+      ).map((file) => file.id)
+    ).toEqual(['/repo/file.ts', 'wt-1::all-diffs::uncommitted', 'dirty'])
+  })
+
   it('matches edit tabs and unstaged diff tabs for the same worktree file', () => {
     const matchingEdit = makeOpenFile()
     const matchingPreview = makeOpenFile({

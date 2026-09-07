@@ -1,7 +1,7 @@
 import type { Repo } from '../../../shared/repo-types'
 import { getRepoExecutionHostId } from '../../../shared/execution-host'
 import { getDefaultRepoHookSettings } from '../../../shared/constants'
-import { isFolderRepo } from '../../../shared/repo-kind'
+import { getRepoKind } from '../../../shared/repo-kind'
 import { sanitizeRepoIcon } from '../../../shared/repo-icon'
 import { normalizeRepoSourceControlAiOverrides } from '../../../shared/source-control-ai'
 import {
@@ -50,10 +50,12 @@ export function hydrateRepo(repo: Repo, gitUsernameCache: ReadonlyMap<string, st
   const worktreeVisibilitySourcePreferences = normalizeWorktreeVisibilitySourcePreferences(
     rawWorktreeVisibilitySourcePreferences
   )
-  // Why: never spawn git/gh username resolution in hydration — a stuck probe froze Windows startup for minutes (issue #7225); read only cache/persisted value.
-  const gitUsername = isFolderRepo(repo)
-    ? ''
-    : (gitUsernameCache.get(repoGitUsernameCacheKey(repo)) ?? repo.gitUsername ?? '')
+  const kind = getRepoKind(repo)
+  // Why: never spawn git/gh username resolution in hydration — a stuck probe froze Windows startup for minutes (issue #7225); read only cache/persisted value. Non-Git repositories have no Git branch-prefix identity.
+  const gitUsername =
+    kind === 'git'
+      ? (gitUsernameCache.get(repoGitUsernameCacheKey(repo)) ?? repo.gitUsername ?? '')
+      : ''
 
   return {
     ...repoWithoutIcon,
@@ -67,7 +69,7 @@ export function hydrateRepo(repo: Repo, gitUsernameCache: ReadonlyMap<string, st
     ...(worktreeVisibilitySourcePreferences !== undefined
       ? { worktreeVisibilitySourcePreferences }
       : {}),
-    kind: isFolderRepo(repo) ? 'folder' : 'git',
+    kind,
     gitUsername,
     hookSettings: {
       ...getDefaultRepoHookSettings(),

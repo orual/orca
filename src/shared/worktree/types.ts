@@ -21,6 +21,8 @@ export type WorkspaceLinkedItem = {
 // ─── Worktree (git-level) ────────────────────────────────────────────
 export type GitWorktreeInfo = {
   path: string
+  /** Provider-specific jj identity; Git callers must ignore this field. */
+  jjWorkspace?: JjWorkspaceMetadata
   head: string
   branch: string
   isBare: boolean
@@ -56,6 +58,23 @@ export type WorkspaceStatusDefinition = {
   label: string
   color?: string
   icon?: string
+}
+
+export type JjWorkspaceMetadata = {
+  name: string
+  root: string | null
+  /** False when jj listed the workspace but could not resolve its root. */
+  rootResolved: boolean
+}
+
+/** Proof retained only after jj forget definitely succeeded but directory cleanup failed. */
+export type JjCleanupPending = {
+  hostId: ExecutionHostId
+  worktreeId: string
+  instanceId?: string
+  workspaceName: string
+  targetRoot: string
+  ownerRoot: string
 }
 
 export type Worktree = {
@@ -141,6 +160,8 @@ export type Worktree = {
   mobileDiffReview?: MobileDiffReviewState
   automationProvenance?: AutomationWorkspaceProvenance
   cliProvenance?: CliWorkspaceProvenance
+  /** Explicit jj identity; Git branch/head fields are compatibility projections only. */
+  jjWorkspace?: JjWorkspaceMetadata
 } & GitWorktreeInfo
 
 /** Provenance for workspaces created through `orca worktree create`. Absent on
@@ -204,7 +225,7 @@ export type GitHubPrStartPoint = {
 
 export type WorktreeOwnership = 'orca-managed' | 'external' | 'unknown-legacy' | 'agent-scratch'
 
-export type DetectedWorktreeListSource = 'git' | 'metadata-fallback' | 'session-fallback'
+export type DetectedWorktreeListSource = 'git' | 'jj' | 'metadata-fallback' | 'session-fallback'
 
 export type DetectedWorktree = Worktree & {
   ownership: WorktreeOwnership

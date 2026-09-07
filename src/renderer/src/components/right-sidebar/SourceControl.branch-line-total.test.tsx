@@ -3,6 +3,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as SourceControlPanelModelModule from './source-control/panel/use-panel-model'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { GitBranchCompareSummary } from '../../../../shared/git-diff-compare-types'
 import {
@@ -10,6 +11,38 @@ import {
   getBranchLineTotalMergeBase
 } from './branch-line-total-request-gate'
 import SourceControl from './SourceControl'
+import { JjChangesPanel } from './source-control/panel/jj-changes-panel'
+
+const jjPanel = vi.hoisted(() => ({
+  useState: vi.fn(),
+  model: {
+    state: {
+      status: 'ready' as const,
+      changes: [{ path: 'src/current.ts', status: 'modified' as const }],
+      error: null
+    },
+    context: null,
+    refresh: vi.fn().mockResolvedValue(undefined),
+    readDiff: vi.fn()
+  }
+}))
+const gitPanelModel = vi.hoisted(() => ({ use: vi.fn() }))
+
+vi.mock('./source-control/panel/use-jj-changes-panel-state', () => ({
+  useJjChangesPanelState: () => jjPanel.useState() ?? jjPanel.model
+}))
+vi.mock('./source-control/panel/use-panel-model', async () => {
+  const actual = await vi.importActual<typeof SourceControlPanelModelModule>(
+    './source-control/panel/use-panel-model'
+  )
+  return {
+    ...actual,
+    useSourceControlPanelModel: (...args: Parameters<typeof actual.useSourceControlPanelModel>) => {
+      gitPanelModel.use()
+      return actual.useSourceControlPanelModel(...args)
+    }
+  }
+})
 
 const MERGE_BASE = '1f3c0d9a5b6e7f8091a2b3c4d5e6f708192a3b4c'
 
@@ -79,6 +112,20 @@ vi.mock('./git-status-refresh', () => ({
 
 function noopAsync(value: unknown = undefined): () => Promise<unknown> {
   return vi.fn().mockResolvedValue(value)
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 const readySummary: GitBranchCompareSummary = {
@@ -359,5 +406,69 @@ describe('SourceControl branch line total chip', () => {
 
     expect(chip()?.textContent).toBe('+42')
     expect(chip()?.getAttribute('aria-label')).toBe('42 lines added')
+  })
+})
+
+describe('SourceControl Jujutsu provider boundary', () => {
+  it('renders the real jj panel without mounting the Git panel model', () => {
+    resetState()
+    mocks.activeRepo.kind = 'jj'
+    renderSourceControl()
+
+    expect(container.textContent).toContain('current.ts')
+    expect(gitPanelModel.use).not.toHaveBeenCalled()
+  })
+
+  it('does not open a stale diff after the keyed workspace changes', async () => {
+    resetState()
+    mocks.activeRepo.kind = 'jj'
+    const pending = createDeferred<{
+      ok: true
+      path: string
+      change: { path: string; status: 'modified' }
+      comparison: 'current-change-vs-parents'
+      diff: {
+        kind: 'text'
+        originalContent: string
+        modifiedContent: string
+        originalIsBinary: false
+        modifiedIsBinary: false
+      }
+    }>()
+    const readDiff = vi.fn(() => pending.promise)
+    jjPanel.useState.mockReturnValue({ ...jjPanel.model, readDiff })
+    renderSourceControl()
+
+    const row = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('current.ts')
+    )
+    expect(row).toBeTruthy()
+    act(() => row?.click())
+
+    act(() => {
+      root.render(
+        <TooltipProvider>
+          <JjChangesPanel key="wt-2" worktreeId="wt-2" worktreePath="/repo/other" />
+        </TooltipProvider>
+      )
+    })
+    await act(async () => {
+      pending.resolve({
+        ok: true,
+        path: 'src/current.ts',
+        change: { path: 'src/current.ts', status: 'modified' },
+        comparison: 'current-change-vs-parents',
+        diff: {
+          kind: 'text',
+          originalContent: 'old',
+          modifiedContent: 'new',
+          originalIsBinary: false,
+          modifiedIsBinary: false
+        }
+      })
+      await pending.promise
+    })
+
+    expect(mocks.state.openFile).not.toHaveBeenCalled()
   })
 })

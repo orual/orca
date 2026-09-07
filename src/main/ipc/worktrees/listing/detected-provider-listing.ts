@@ -2,7 +2,13 @@ import type { Store } from '../../../persistence/loading-store/store'
 import type { Repo } from '../../../../shared/repo-types'
 import { getSshGitProvider } from '../../../providers/ssh-git-dispatch'
 import type { DetectedWorktreeListResult, GitWorktreeInfo } from '../../../../shared/worktree/types'
-import { isFolderRepo } from '../../../../shared/repo-kind'
+import { isFolderRepo, isJjRepo } from '../../../../shared/repo-kind'
+import { getLocalProjectWorktreeGitOptions } from '../../../project-runtime-git-options'
+import {
+  buildJjWorktreeInfos,
+  listJjWorkspacesForRepo,
+  persistJjWorktreeMetadata
+} from '../../../jj/jj-workspace-catalog'
 import { projectResolvedWorktreeLineage } from '../../../../shared/resolved-worktree-lineage'
 import type { DirectSshDetectedWorktreeRequest } from '../../../../shared/detected-worktree-provider-contract'
 import { isAdmissibleDirectSshAuthority } from '../../../../shared/ssh-retained-payload-admission'
@@ -75,6 +81,24 @@ export async function listDetectedWorktreesForCapturedRepo(
           buildFolderDetectedWorktrees(store, repo),
           store.getAllWorktreeLineage?.() ?? {}
         )
+      }
+    }
+    if (isJjRepo(repo)) {
+      const jjResult = await listJjWorkspacesForRepo(repo, {
+        ...getLocalProjectWorktreeGitOptions(store, repo),
+        ...(providerAbort?.signal ? { signal: providerAbort.signal } : {})
+      })
+      const jjWorktrees = buildJjWorktreeInfos(store, repo, jjResult)
+      if (!isCurrent()) {
+        return null
+      }
+      persistJjWorktreeMetadata(store, repo, jjResult)
+      const detected = buildDetectedGitWorktrees(store, repo, jjWorktrees, allMeta)
+      return {
+        repoId: repo.id,
+        authoritative: jjResult.ok && jjResult.complete,
+        source: 'jj',
+        worktrees: projectResolvedWorktreeLineage(detected, store.getAllWorktreeLineage?.() ?? {})
       }
     }
     if (repo.connectionId) {

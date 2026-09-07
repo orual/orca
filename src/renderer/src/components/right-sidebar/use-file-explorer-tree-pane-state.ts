@@ -1,14 +1,17 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
-import { useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useAppStore } from '@/store'
 import { getRuntimeEnvironmentIdForWorktree } from '@/lib/worktree-runtime-owner'
+import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
+import { isJjRepo } from '../../../../shared/repo-kind'
 import { useWorkspaceFileBrowserActionPredicate } from '@/lib/file-preview'
 import type { RuntimeFileOperationArgs } from '@/runtime/runtime-file-client'
 import type { OpenFile } from '@/store/slices/editor'
 import type { Repo } from '../../../../shared/repo-types'
 import type { FileExplorerRowProjection } from './file-explorer-row-projection'
 import type { TreeNode } from './file-explorer-types'
-import { buildFolderStatusMap, buildStatusMap } from './status-display'
+import type { FsChangedPayload } from '../../../../shared/filesystem-entry-types'
+import { useFileExplorerStatus } from './use-file-explorer-status'
 import { useFileDeletion } from './useFileDeletion'
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop'
 import { useFileExplorerHandlers } from './useFileExplorerHandlers'
@@ -45,8 +48,8 @@ type UseFileExplorerTreePaneStateResult = {
   runtimeDownloadContext: RuntimeFileOperationArgs | null
   supportsFolderDownload: boolean
   canOpenWorkspaceFileBrowserForPath: ReturnType<typeof useWorkspaceFileBrowserActionPredicate>
-  statusByRelativePath: ReturnType<typeof buildStatusMap>
-  folderStatusByRelativePath: ReturnType<typeof buildFolderStatusMap>
+  statusByRelativePath: ReturnType<typeof useFileExplorerStatus>['statusByRelativePath']
+  folderStatusByRelativePath: ReturnType<typeof useFileExplorerStatus>['folderStatusByRelativePath']
   deletion: ReturnType<typeof useFileDeletion>
   dragDrop: ReturnType<typeof useFileExplorerDragDrop>
   inlineInputState: ReturnType<typeof useFileExplorerInlineInput>
@@ -135,13 +138,8 @@ export function useFileExplorerTreePaneState({
     [activeRepo?.connectionId, activeRuntimeEnvironmentId, activeWorktreeId, worktreePath]
   )
   const isWindows = useMemo(() => navigator.userAgent.includes('Windows'), [])
-
-  const entries = useMemo(
-    () => (activeWorktreeId ? (gitStatusByWorktree[activeWorktreeId] ?? []) : []),
-    [activeWorktreeId, gitStatusByWorktree]
-  )
-  const statusByRelativePath = useMemo(() => buildStatusMap(entries), [entries])
-  const folderStatusByRelativePath = useMemo(() => buildFolderStatusMap(entries), [entries])
+  const { statusByRelativePath, folderStatusByRelativePath, refreshJjStatus } =
+    useFileExplorerStatus(activeRepo, activeWorktreeId, worktreePath, gitStatusByWorktree)
 
   const deletion = useFileDeletion({
     activeWorktreeId,
@@ -184,6 +182,20 @@ export function useFileExplorerTreePaneState({
     refreshDir
   })
 
+  const handleFilesystemChange = useCallback(
+    (payload: FsChangedPayload): void => {
+      if (
+        isJjRepo(activeRepo ?? { kind: 'git' }) &&
+        activeWorktreeId &&
+        normalizeRuntimePathForComparison(payload.worktreePath) ===
+          normalizeRuntimePathForComparison(worktreePath ?? '')
+      ) {
+        void refreshJjStatus(true)
+      }
+    },
+    [activeRepo, activeWorktreeId, refreshJjStatus, worktreePath]
+  )
+
   useFileExplorerWatch({
     worktreePath: visibleFilesWorktreePath,
     activeWorktreeId,
@@ -196,7 +208,8 @@ export function useFileExplorerTreePaneState({
     inlineInput: inlineInputState.inlineInput,
     dragSourcePath: dragDrop.dragSourcePath,
     isNativeDragOver: dragDrop.isNativeDragOver,
-    operationOwner: rootCache?.operationOwner
+    operationOwner: rootCache?.operationOwner,
+    onFilesystemChange: handleFilesystemChange
   })
 
   useFileExplorerImport({

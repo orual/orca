@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
+import { Dialog } from '@/components/ui/dialog'
 import { useAppStore } from '@/store'
 import { useAllWorktrees } from '@/store/selectors'
 import { runWorktreeDeletesInParallel } from './delete-worktree-flow'
@@ -14,12 +8,7 @@ import {
   getWorktreeHostIdentity
 } from '../../../../shared/worktree/host-qualified-identity'
 import { getWorkspaceDeleteLineage } from './workspace-delete-lineage'
-import { DeleteWorktreeLineageNotice } from './DeleteWorktreeLineageNotice'
-import { DeleteWorktreeSkipConfirmOption } from './DeleteWorktreeSkipConfirmOption'
-import { DeleteWorktreeDialogFooter } from './DeleteWorktreeDialogFooter'
-import { DeleteWorktreeDialogDescription } from './DeleteWorktreeDialogDescription'
-import { DeleteWorktreeTargetPreview } from './DeleteWorktreeTargetPreview'
-import { DeleteWorktreeWarningPanels } from './DeleteWorktreeWarningPanels'
+import { DeleteWorktreeDialogContent } from './DeleteWorktreeDialogContent'
 import { persistDeleteWorktreeConfirmSkipPreference } from './delete-worktree-preference-toast'
 import { getDeleteWorktreeDirtyChangeCounts } from './delete-worktree-dirty-change-counts'
 import {
@@ -28,8 +17,8 @@ import {
   getDeleteWorktreeLineageDialogCopy,
   isFolderWorkspaceDelete as getIsFolderWorkspaceDelete
 } from './delete-worktree-dialog-copy'
-import { translate } from '@/i18n/i18n'
 import type { WorktreeRemovalTarget } from '../../../../shared/worktree/removal'
+import { isJjRepo } from '../../../../shared/repo-kind'
 import { useDeleteWorktreeStatusHydration } from './use-delete-worktree-status-hydration'
 import { useConfirmedWorktreeDeleteTargets } from './use-confirmed-worktree-delete-targets'
 import { runLineageDeleteAll } from './delete-worktree-lineage-delete-all'
@@ -112,6 +101,8 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
   }, [allWorktrees, worktreeDeleteIdentities, worktreeIds])
   const repoMap = useMemo(() => new Map(repos.map((repo) => [repo.id, repo])), [repos])
   const isBatchDelete = worktreeIds.length > 1
+  const isJjWorkspaceDelete =
+    !isBatchDelete && worktree !== null && isJjRepo(repoMap.get(worktree.repoId) ?? { kind: 'git' })
   const isFolderWorkspaceDelete = !isBatchDelete && getIsFolderWorkspaceDelete(repoMap, worktree)
   const folderWorkspaceDeleteCount = useMemo(
     () => countFolderWorkspaceDeletes(repoMap, worktrees),
@@ -138,7 +129,6 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
   // discover this limitation via a confusing force-delete dead-end.
   const isMainWorktree = !isBatchDelete && (worktree?.isMainWorktree ?? false)
   const childWorkspaceCount = lineageDelete.descendants.length
-  const hasLineageChildren = childWorkspaceCount > 0
   const canDeleteAllLineage =
     !isMainWorktree && !isBatchDelete && lineageDelete.deleteAllTargets.length > 1
   const lineageFolderWorkspaceDeleteCount = useMemo(
@@ -151,7 +141,10 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
     folderWorkspaceDeleteCount: lineageFolderWorkspaceDeleteCount
   })
   const allowSkipConfirm =
-    !isBatchDelete && modalData.allowSkipConfirm !== false && childWorkspaceCount === 0
+    !isBatchDelete &&
+    !isJjWorkspaceDelete &&
+    modalData.allowSkipConfirm !== false &&
+    childWorkspaceCount === 0
   const [dontAskAgain, setDontAskAgain] = useState(false)
   const deleteTargets = useMemo(
     () => (canDeleteAllLineage ? lineageDelete.deleteAllTargets : worktrees),
@@ -313,6 +306,38 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
     ]
   )
 
+  const handleJjRemoval = useCallback(
+    (jjRemoval: 'forget' | 'forget-and-delete') => {
+      if (!isJjWorkspaceDelete || worktreeIds.length === 0) {
+        return
+      }
+      const currentWorktrees = resolveConfirmedTargets(worktreeDeleteIdentities, worktreeIds.length)
+      if (!currentWorktrees) {
+        return
+      }
+      const deletePromise = runWorktreeDeletesInParallel(currentWorktrees, {
+        force: false,
+        jjRemoval,
+        onForceDeleted: handleForceDeletedFromToast
+      })
+      closeModal()
+      void deletePromise.then((deletedTargets) => {
+        if (deletedTargets.length > 0) {
+          onDeleted?.(deletedTargets)
+        }
+      })
+    },
+    [
+      closeModal,
+      handleForceDeletedFromToast,
+      isJjWorkspaceDelete,
+      onDeleted,
+      resolveConfirmedTargets,
+      worktreeDeleteIdentities,
+      worktreeIds.length
+    ]
+  )
+
   const handleDeleteAll = useCallback(() => {
     runLineageDeleteAll({
       deleteAllTargetCount: lineageDelete.deleteAllTargets.length,
@@ -335,91 +360,33 @@ const DeleteWorktreeDialog = React.memo(function DeleteWorktreeDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent
-        className="max-w-md"
-        onOpenAutoFocus={(event) => {
-          if (isMainWorktree) {
-            return
-          }
-          event.preventDefault()
-          // Why: this confirmation dialog exists specifically to guard a
-          // destructive action the user already chose from the context menu.
-          // Radix otherwise picks the first tabbable control, which can be the
-          // cancel/close affordance and breaks the expected "Delete, Enter"
-          // flow for quick keyboard confirmation.
-          confirmButtonRef.current?.focus()
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle className="text-sm">
-            {isBatchDelete
-              ? translate(
-                  'auto.components.sidebar.DeleteWorktreeDialog.86f0ae1257',
-                  'Delete Workspaces'
-                )
-              : translate(
-                  'auto.components.sidebar.DeleteWorktreeDialog.fc23c4cbdf',
-                  'Delete Workspace'
-                )}
-          </DialogTitle>
-          <DeleteWorktreeDialogDescription
-            targetClassName={deleteCopy.targetClassName}
-            targetLabel={deleteCopy.targetLabel}
-            canDeleteAllLineage={canDeleteAllLineage}
-            childTargetLabel={lineageDeleteCopy.childTargetLabel}
-            descriptionSuffix={
-              canDeleteAllLineage
-                ? lineageDeleteCopy.descriptionSuffix
-                : deleteCopy.descriptionSuffix
-            }
-          />
-        </DialogHeader>
-
-        <DeleteWorktreeTargetPreview
-          isBatchDelete={isBatchDelete}
-          worktree={worktree}
-          worktrees={worktrees}
-          collisionWorktrees={allWorktrees}
-          hostLabelById={hostLabelById}
-          deleteStateByWorktreeId={deleteStateByWorktreeId}
-          dirtyChangeCountsByWorktreeId={dirtyChangeCountsByWorktreeId}
-        />
-
-        {hasLineageChildren && (
-          <DeleteWorktreeLineageNotice
-            descendants={lineageDelete.descendants}
-            dirtyChangeCountsByWorktreeId={dirtyChangeCountsByWorktreeId}
-          />
-        )}
-
-        <DeleteWorktreeWarningPanels
-          isMainWorktree={isMainWorktree}
-          mainWorktreeBlocker={deleteCopy.mainWorktreeBlocker}
-          deleteError={deleteError}
-        />
-
-        <DeleteWorktreeSkipConfirmOption
-          showDontAskAgain={!isMainWorktree && allowSkipConfirm && !canForceDelete}
-          dontAskAgain={dontAskAgain}
-          onToggleDontAskAgain={() => setDontAskAgain((prev) => !prev)}
-        />
-
-        <DialogFooter>
-          <DeleteWorktreeDialogFooter
-            isMainWorktree={isMainWorktree}
-            isDeleting={isDeleting}
-            canForceDelete={canForceDelete}
-            isBatchDelete={isBatchDelete}
-            worktreeCount={worktrees.length}
-            canDeleteAllLineage={canDeleteAllLineage}
-            lineageDeleteTargetCount={lineageDelete.deleteAllTargets.length}
-            onCancel={() => handleOpenChange(false)}
-            onForceDelete={() => handleDelete(true)}
-            onDelete={canDeleteAllLineage ? handleDeleteAll : () => handleDelete(false)}
-            confirmButtonRef={confirmButtonRef}
-          />
-        </DialogFooter>
-      </DialogContent>
+      <DeleteWorktreeDialogContent
+        isMainWorktree={isMainWorktree}
+        isBatchDelete={isBatchDelete}
+        isJjWorkspaceDelete={isJjWorkspaceDelete}
+        isDeleting={isDeleting}
+        canForceDelete={canForceDelete}
+        canDeleteAllLineage={canDeleteAllLineage}
+        worktree={worktree}
+        worktrees={worktrees}
+        allWorktrees={allWorktrees}
+        hostLabelById={hostLabelById}
+        deleteStateByWorktreeId={deleteStateByWorktreeId}
+        dirtyChangeCountsByWorktreeId={dirtyChangeCountsByWorktreeId}
+        deleteError={deleteError}
+        deleteCopy={deleteCopy}
+        lineageDelete={lineageDelete}
+        lineageDeleteCopy={lineageDeleteCopy}
+        allowSkipConfirm={allowSkipConfirm}
+        dontAskAgain={dontAskAgain}
+        onToggleDontAskAgain={() => setDontAskAgain((prev) => !prev)}
+        onCancel={() => handleOpenChange(false)}
+        onForceDelete={() => handleDelete(true)}
+        onDelete={canDeleteAllLineage ? handleDeleteAll : () => handleDelete(false)}
+        onJjForget={() => handleJjRemoval('forget')}
+        onJjForgetAndDelete={() => handleJjRemoval('forget-and-delete')}
+        confirmButtonRef={confirmButtonRef}
+      />
     </Dialog>
   )
 })

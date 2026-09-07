@@ -15,7 +15,7 @@ import {
   releaseAutomationWorkspaceProvenanceRequest,
   finishAutomationWorkspaceProvenanceRequest
 } from '../../../automations/workspace-provenance'
-import { isFolderRepo } from '../../../../shared/repo-kind'
+import { isFolderRepo, isJjRepo } from '../../../../shared/repo-kind'
 import {
   createRemoteWorktree,
   createLocalWorktree,
@@ -31,6 +31,8 @@ import { createFolderWorkspace } from './folder-workspace-creation'
 import { findExactRepoOwner, isCapturedRepoCurrent } from '../listing/worktree-host-ownership'
 import { requireWorktreeCreateRoute } from '../../../worktree-create-execution-host-route'
 import type { WorktreeIpcContext } from '../worktree-ipc-context'
+import { createJjManagedWorktree } from '../../../jj/jj-workspace-creation'
+import { getRepoSshConnectionId } from '../../../../shared/execution-host'
 
 export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): void {
   const { mainWindow, store, runtime, options } = context
@@ -59,13 +61,28 @@ export function registerWorktreeCreateHandlers(context: WorktreeIpcContext): voi
           ...args,
           automationProvenance
         }
+        const repoIsJj = isJjRepo(repo)
 
         let result: CreateWorktreeResult
         try {
           // Why: wrap only the helpers; the pre-validation throws above are IPC-shape bugs, not the git/filesystem failures the funnel tracks.
+          if (args.workspaceKind === 'jj' && !repoIsJj) {
+            throw new Error(`jj workspace creation requires a jj repository: ${repo.id}`)
+          }
           if (isFolderRepo(repo)) {
             // A folder workspace is a registration, not a filesystem create, so it is host-agnostic.
             result = createFolderWorkspace(createArgs, repo, store)
+          } else if (repoIsJj) {
+            // JJ uses the same host boundary as Git; runtime-owned rows must be created by their owner.
+            requireWorktreeCreateRoute(repo)
+            result = await createJjManagedWorktree(store, repo, createArgs, {
+              creationSource: 'desktop',
+              remote: Boolean(getRepoSshConnectionId(repo)),
+              onCreated: () => {
+                runtime.notifyWorktreeCatalogChangedForRemoteClients(repo.id)
+                notifyWorktreesChanged(mainWindow, repo.id)
+              }
+            })
           } else {
             // Resolve the host rather than reading the raw field: an `executionHostId: 'ssh:*'`-only
             // row read as local here and ran `git worktree add` on the client against a remote path,

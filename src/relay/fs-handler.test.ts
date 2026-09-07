@@ -56,6 +56,7 @@ describe('FsHandler', () => {
     expect(methods).toContain('fs.readDir')
     expect(methods).toContain('fs.readFile')
     expect(methods).toContain('fs.tempDir')
+    expect(methods).toContain('fs.writePrivateFile')
     expect(methods).toContain('fs.writeFile')
     expect(methods).toContain('fs.stat')
     expect(methods).toContain('fs.deletePath')
@@ -181,6 +182,64 @@ describe('FsHandler', () => {
       'File too large'
     )
   })
+
+  it('rejects private runner writes unless the host workspace key and extension are valid', async () => {
+    await expect(
+      dispatcher.callRequest('fs.writePrivateFile', {
+        workspaceKey: '../escape',
+        extension: 'sh',
+        content: '#!/bin/sh\n'
+      })
+    ).rejects.toThrow('invalid setup runner parameters')
+    await expect(
+      dispatcher.callRequest('fs.writePrivateFile', {
+        workspaceKey: '0123456789abcdef0123456789abcdef',
+        extension: 'txt',
+        content: 'unsafe'
+      })
+    ).rejects.toThrow('invalid setup runner parameters')
+  })
+
+  it.skipIf(process.platform === 'win32')(
+    'writes private runners under the host home with restrictive permissions and atomic reruns',
+    async () => {
+      const hostHome = path.join(tmpDir, 'host-home')
+      const workspaceKey = '0123456789abcdef0123456789abcdef'
+      await fs.mkdir(hostHome)
+      const previousHome = process.env.HOME
+      process.env.HOME = hostHome
+      try {
+        const runnerPath = (await dispatcher.callRequest('fs.writePrivateFile', {
+          workspaceKey,
+          extension: 'sh',
+          content: '#!/bin/sh\necho first\n'
+        })) as string
+        const privateRoot = path.join(hostHome, '.orca', 'jj', 'setup')
+        const workspaceDir = path.join(privateRoot, workspaceKey)
+        expect(runnerPath).toBe(path.join(workspaceDir, 'setup-runner.sh'))
+        expect((await fs.stat(privateRoot)).mode & 0o777).toBe(0o700)
+        expect((await fs.stat(workspaceDir)).mode & 0o777).toBe(0o700)
+        expect((await fs.stat(runnerPath)).mode & 0o777).toBe(0o700)
+        await expect(fs.readFile(runnerPath, 'utf8')).resolves.toBe('#!/bin/sh\necho first\n')
+
+        await expect(
+          dispatcher.callRequest('fs.writePrivateFile', {
+            workspaceKey,
+            extension: 'sh',
+            content: '#!/bin/sh\necho second\n'
+          })
+        ).resolves.toBe(runnerPath)
+        await expect(fs.readFile(runnerPath, 'utf8')).resolves.toBe('#!/bin/sh\necho second\n')
+        await expect(fs.readdir(workspaceDir)).resolves.toEqual(['setup-runner.sh'])
+      } finally {
+        if (previousHome === undefined) {
+          delete process.env.HOME
+        } else {
+          process.env.HOME = previousHome
+        }
+      }
+    }
+  )
 
   it('writeFile creates/overwrites file content', async () => {
     const filePath = path.join(tmpDir, 'write-test.txt')

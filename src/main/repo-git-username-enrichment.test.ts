@@ -71,8 +71,9 @@ describe('enrichRepoGitUsernames', () => {
     expect(onChanged).toHaveBeenCalledTimes(1)
   })
 
-  it('skips folder and SSH repos', async () => {
+  it('skips jj, folder, and SSH repos', async () => {
     const store = makeStore([
+      makeRepo({ id: 'jj', kind: 'jj' }),
       makeRepo({ id: 'folder', kind: 'folder' }),
       makeRepo({ id: 'ssh', path: '/remote/repo', connectionId: 'conn-1' })
     ])
@@ -81,6 +82,7 @@ describe('enrichRepoGitUsernames', () => {
     await flushRepoGitUsernameEnrichmentForTests()
 
     expect(resolveLocalGitUsernameDetailedMock).not.toHaveBeenCalled()
+    expect(store.setResolvedRepoGitUsername).not.toHaveBeenCalled()
   })
 
   it('probes each repo location at most once per session', async () => {
@@ -173,5 +175,35 @@ describe('enrichRepoGitUsernames', () => {
       expect.objectContaining({ id: 'r2' }),
       'demo-user'
     )
+  })
+
+  it('does not write a pending Git probe after the repo transitions to jj', async () => {
+    const repo = makeRepo()
+    const repos = [repo]
+    const store = makeStore(repos)
+    let releaseProbe!: () => void
+    resolveLocalGitUsernameDetailedMock
+      .mockReturnValueOnce(
+        new Promise<ResolvedGitUsername>((resolve) => {
+          releaseProbe = () => resolve(resolved('stale-user'))
+        })
+      )
+      .mockResolvedValueOnce(resolved('fresh-user'))
+
+    enrichRepoGitUsernames(store)
+    repo.kind = 'jj'
+    enrichRepoGitUsernames(store)
+    releaseProbe()
+    await flushRepoGitUsernameEnrichmentForTests()
+
+    expect(resolveLocalGitUsernameDetailedMock).toHaveBeenCalledTimes(1)
+    expect(store.setResolvedRepoGitUsername).not.toHaveBeenCalled()
+
+    repo.kind = 'git'
+    enrichRepoGitUsernames(store)
+    await flushRepoGitUsernameEnrichmentForTests()
+
+    expect(resolveLocalGitUsernameDetailedMock).toHaveBeenCalledTimes(2)
+    expect(store.setResolvedRepoGitUsername).toHaveBeenCalledWith(repo, 'fresh-user')
   })
 })

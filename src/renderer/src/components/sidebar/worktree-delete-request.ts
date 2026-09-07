@@ -22,6 +22,8 @@ export type WorktreeDeleteOptions = {
 
 export type WorktreeDeleteWithToastOptions = {
   force?: boolean
+  /** JJ only: choose whether to retain, delete, or explicitly resume a proven cleanup. */
+  jjRemoval?: 'forget' | 'forget-and-delete' | 'cleanup-only'
   onForceDeleted?: (target: WorktreeRemovalTarget) => void
   onPreservedBranch?: (branch: PreservedBranchCleanup) => void
   suppressPreservedBranchToast?: boolean

@@ -84,6 +84,7 @@ export function listStoredWorktreeRowsForRepo(
       branch: '',
       isBare: false,
       isMainWorktree: areWorktreePathsEqual(parsed.worktreePath, repo.path),
+      ...(meta.jjWorkspace !== undefined ? { jjWorkspace: meta.jjWorkspace } : {}),
       ...(meta.sparseDirectories !== undefined ||
       meta.sparseBaseRef !== undefined ||
       meta.sparsePresetId !== undefined
@@ -133,7 +134,7 @@ export async function resolveRepoWorktreeRows(
     null
   )) ?? { ok: false, worktrees: listStoredWorktreeRowsForRepo(store, repo, repoOwnerCount) }
   const gitWorktrees = scan.worktrees
-  if (scan.ok) {
+  if (scan.ok && scan.provider !== 'jj') {
     pruneLineageForMissingRepoWorktrees(store, repo, gitWorktrees)
   }
   const expectedHostId = getRepoExecutionHostId(repo)

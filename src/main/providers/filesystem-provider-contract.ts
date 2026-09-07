@@ -78,6 +78,8 @@ export type IFilesystemProvider = {
   downloadFolder?: (src: string, dest: string, options?: { signal?: AbortSignal }) => Promise<void>
   openFileUploadSession?(): Promise<FileUploadSession>
   getTempDir?(): Promise<string>
+  /** Writes an Orca-owned host-private file and returns its expanded host path. */
+  writePrivateFile?(workspaceKey: string, extension: 'sh' | 'cmd', content: string): Promise<string>
   writeFile(filePath: string, content: string): Promise<void>
   writeTerminalArtifact?(
     filePath: string,

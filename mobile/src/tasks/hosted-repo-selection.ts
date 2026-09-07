@@ -8,7 +8,7 @@ export type HostedRepoCandidate = {
 /** Folder workspaces have no hosted provider behind them, so they cannot back a
  *  GitHub/GitLab task or a Project board row. */
 export function isHostedTaskRepo(repo: HostedRepoCandidate): boolean {
-  return repo.kind !== 'folder'
+  return repo.kind !== 'folder' && repo.kind !== 'jj'
 }
 
 /** Narrows a persisted repo-id selection to what this host actually has.

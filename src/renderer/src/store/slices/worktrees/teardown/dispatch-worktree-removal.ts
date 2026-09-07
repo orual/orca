@@ -37,6 +37,7 @@ export async function dispatchWorktreeRemoval(args: {
       force,
       allowUnverifiedPtyStop: options?.allowUnverifiedPtyStop === true,
       skipArchive,
+      ...(options?.jjRemoval ? { jjRemoval: options.jjRemoval } : {}),
       ...snapshotPruneBatch
     })
   }
@@ -50,7 +51,8 @@ export async function dispatchWorktreeRemoval(args: {
       ...(effectiveHostId ? { hostId: effectiveHostId } : {}),
       force,
       allowUnverifiedPtyStop: options?.allowUnverifiedPtyStop === true,
-      runHooks: !skipArchive
+      runHooks: !skipArchive,
+      ...(options?.jjRemoval ? { jjRemoval: options.jjRemoval } : {})
     },
     { timeoutMs: 60_000 }
   )

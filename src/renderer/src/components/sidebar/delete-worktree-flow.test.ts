@@ -1,3 +1,7 @@
+// @vitest-environment happy-dom
+
+import React, { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ExecutionHostId } from '../../../../shared/execution-host'
 
@@ -16,7 +20,12 @@ const mocks = vi.hoisted(() => {
         hostId?: ExecutionHostId
       }
     >(),
-    repos: [] as { id: string; displayName: string; connectionId?: string }[],
+    repos: [] as {
+      id: string
+      displayName: string
+      connectionId?: string
+      kind?: 'git' | 'jj'
+    }[],
     worktreeLineageById: {},
     allWorktrees: () => Array.from(state.worktreeMap.values()),
     clearWorktreeDeleteState: vi.fn((worktreeId: string) => {
@@ -75,12 +84,17 @@ vi.mock('@/lib/worktree-activation', () => ({
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
-    info: vi.fn()
+    info: vi.fn(),
+    warning: vi.fn()
   }
 }))
 
 vi.mock('./delete-worktree-failure-toast', () => ({
   showDeleteWorktreeFailureToast: vi.fn()
+}))
+
+vi.mock('./worktree-snapshot-prune-batch', () => ({
+  beginWorktreeSnapshotPruneBatch: vi.fn(() => null)
 }))
 
 import { toast } from 'sonner'
@@ -91,6 +105,27 @@ import {
   runWorktreeDeleteWithToast,
   runWorktreeDeletesInParallel
 } from './delete-worktree-flow'
+
+const mountedRoots: Root[] = []
+
+function renderWarningAction(): HTMLButtonElement {
+  const options = vi.mocked(toast.warning).mock.calls.at(-1)?.[1] as
+    | { action?: { label: string; onClick: () => void } }
+    | undefined
+  if (!options?.action) {
+    throw new Error('warning toast action not found')
+  }
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  mountedRoots.push(root)
+  act(() => {
+    root.render(
+      React.createElement('button', { onClick: options.action?.onClick }, options.action?.label)
+    )
+  })
+  return container.querySelector('button')!
+}
 
 function setWorktrees(
   worktrees: {
@@ -132,7 +167,10 @@ describe('delete worktree flow', () => {
     mocks.state.repos = []
     vi.mocked(toast.error).mockClear()
     vi.mocked(toast.info).mockClear()
+    vi.mocked(toast.warning).mockClear()
     vi.mocked(showDeleteWorktreeFailureToast).mockClear()
+    mountedRoots.splice(0).forEach((root) => act(() => root.unmount()))
+    document.body.innerHTML = ''
     setWorktrees([])
   })
 
@@ -292,6 +330,28 @@ describe('delete worktree flow', () => {
     })
   })
 
+  it('keeps JJ single-target deletes behind explicit confirmation when confirmation is skipped', () => {
+    mocks.state.settings = { skipDeleteWorktreeConfirm: true }
+    setWorktrees([{ id: 'wt-jj', displayName: 'jj workspace' }])
+    mocks.state.repos = [{ id: 'repo-1', displayName: 'jj repo', kind: 'jj' }]
+
+    runWorktreeDelete('wt-jj')
+
+    expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
+    expect(mocks.state.openModal).toHaveBeenCalledWith('delete-worktree', {
+      worktreeId: 'wt-jj',
+      worktreeDeleteIdentities: [{ id: 'wt-jj', instanceId: 'wt-jj-instance' }]
+    })
+
+    mocks.state.openModal.mockClear()
+    expect(runWorktreeBatchDelete(['wt-jj'])).toBe(true)
+    expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
+    expect(mocks.state.openModal).toHaveBeenCalledWith('delete-worktree', {
+      worktreeId: 'wt-jj',
+      worktreeDeleteIdentities: [{ id: 'wt-jj', instanceId: 'wt-jj-instance' }]
+    })
+  })
+
   it('runs a single eligible delete immediately when confirmation is skipped', async () => {
     mocks.state.settings = { skipDeleteWorktreeConfirm: true }
     setWorktrees([{ id: 'wt-1', displayName: 'one' }])
@@ -307,6 +367,48 @@ describe('delete worktree flow', () => {
     )
     await vi.waitFor(() => {
       expect(onDeleted).toHaveBeenCalledWith([{ id: 'wt-1', executionHostId: null }])
+    })
+  })
+
+  it('does not retry partial JJ cleanup until the rendered Resume cleanup action is clicked', async () => {
+    const pending = {
+      hostId: 'local' as const,
+      worktreeId: 'wt-jj',
+      workspaceName: 'jj workspace',
+      targetRoot: '/workspaces/wt-jj',
+      ownerRoot: '/workspaces'
+    }
+    mocks.state.removeWorktree.mockResolvedValueOnce({ ok: true, jjCleanupPending: pending })
+
+    await expect(
+      runWorktreeDeleteWithToast({ id: 'wt-jj', executionHostId: null }, 'jj workspace', {
+        jjRemoval: 'forget-and-delete'
+      })
+    ).resolves.toBe(false)
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      'Workspace registration forgotten; directory still remains',
+      expect.objectContaining({
+        description:
+          'The directory was not deleted. Resume cleanup only after confirming the retained target.',
+        action: expect.objectContaining({ label: 'Resume cleanup' })
+      })
+    )
+    expect(mocks.state.removeWorktree).toHaveBeenCalledTimes(1)
+
+    const resumeButton = renderWarningAction()
+    expect(resumeButton.textContent).toBe('Resume cleanup')
+    act(() => {
+      resumeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    await vi.waitFor(() => {
+      expect(mocks.state.removeWorktree).toHaveBeenNthCalledWith(
+        2,
+        { id: 'wt-jj', executionHostId: null },
+        false,
+        { jjRemoval: 'cleanup-only' }
+      )
     })
   })
 

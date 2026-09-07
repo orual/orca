@@ -17,9 +17,10 @@ vi.mock('../../shared/worktree/id', async (importOriginal) => {
   }
 })
 
-const { getLocalRepoForRegisteredWorktree } = await import('./local-worktree-runtime-options')
+const { assertFilesystemGitRepo, getLocalRepoForRegisteredWorktree } =
+  await import('./local-worktree-runtime-options')
 
-type TestRepo = { id: string; path: string; connectionId?: string }
+type TestRepo = { id: string; path: string; connectionId?: string; kind?: 'git' | 'jj' }
 
 const makeStore = (
   repos: readonly TestRepo[],
@@ -69,6 +70,18 @@ describe('getLocalRepoForRegisteredWorktree', () => {
     const { store, metaScans } = makeStore([{ id: 'repo-a', path: '/repos/a' }], [])
     expect(getLocalRepoForRegisteredWorktree(store, '/repos/a', '/repos/a')?.id).toBe('repo-a')
     expect(metaScans()).toBe(0)
+  })
+
+  it('rejects jj owners while preserving missing-kind legacy Git behavior', () => {
+    const jj = makeStore([{ id: 'jj', path: '/repos/jj', kind: 'jj' }], [])
+    expect(() => assertFilesystemGitRepo(jj.store, '/repos/jj', '/repos/jj')).toThrow(
+      'unsupported_repo_kind'
+    )
+
+    const legacyGit = makeStore([{ id: 'legacy', path: '/repos/legacy' }], [])
+    expect(() =>
+      assertFilesystemGitRepo(legacyGit.store, '/repos/legacy', '/repos/legacy')
+    ).not.toThrow()
   })
 
   describe('equivalence with the per-repo scan', () => {

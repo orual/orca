@@ -16,6 +16,7 @@ import {
 } from './visibility-sources'
 import { isLegacyRepoForExternalWorktreeVisibility } from '../external-worktree-visibility'
 import { shouldShowWorktree } from '../worktree-visibility-resolution'
+import { isJjRepo } from '../repo-kind'
 import type { GlobalSettings, OrcaWorkspaceLayout } from '../global-settings-types'
 import type { Repo } from '../repo-types'
 import type { WorktreeMeta } from './meta-types'
@@ -201,7 +202,7 @@ export function toDetectedWorktree(args: {
     ...args.worktree,
     ownership,
     selectedCheckout,
-    visible,
+    visible: isJjRepo(args.repo) ? args.worktree.jjWorkspace?.rootResolved === true : visible,
     ...(visibilitySource ? { visibilitySource } : {})
   }
 }

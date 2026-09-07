@@ -1,6 +1,6 @@
 import type { BaseRefSearchResult, Repo } from '../../shared/repo-types'
 import type { RuntimeRepoSearchRefs } from '../../shared/runtime-types'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import {
   clampRepoSearchRefsLimit,
   getRepoSearchRefsProbeLimit,
@@ -35,7 +35,7 @@ export class RuntimeRepositoryRefQueries {
     const effectiveLimit = clampRepoSearchRefsLimit(limit)
     const probeLimit = getRepoSearchRefsProbeLimit(effectiveLimit)
     const repo = await this.deps.resolveRepo(repoSelector)
-    if (isFolderRepo(repo)) {
+    if (isFolderRepo(repo) || !isGitRepoKind(repo)) {
       return { refs: [], truncated: false }
     }
     const refDetails = repo.connectionId
@@ -55,7 +55,7 @@ export class RuntimeRepositoryRefQueries {
     repoSelector: string
   ): Promise<{ defaultBaseRef: string | null; remoteCount: number }> {
     const repo = await this.deps.resolveRepo(repoSelector)
-    if (isFolderRepo(repo)) {
+    if (isFolderRepo(repo) || !isGitRepoKind(repo)) {
       return { defaultBaseRef: null, remoteCount: 0 }
     }
     if (repo.connectionId) {

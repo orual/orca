@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 
 import '@testing-library/jest-dom/vitest'
+import { act } from 'react'
 import { screen } from '@testing-library/react'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -141,6 +143,28 @@ function makeWorktree(id: string, path: string): Worktree {
     sortOrder: 0,
     lastActivityAt: 1
   }
+}
+
+function makeJjRepo(): Repo {
+  return {
+    id: 'repo-1',
+    path: '/repos/repo-1',
+    displayName: 'JJ repo',
+    badgeColor: 'blue',
+    addedAt: 1,
+    kind: 'jj'
+  }
+}
+
+async function renderDialog(): Promise<{ container: HTMLDivElement; root: Root }> {
+  const { default: DeleteWorktreeDialog } = await import('./DeleteWorktreeDialog')
+  const container = document.createElement('div')
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  act(() => {
+    root.render(<DeleteWorktreeDialog />)
+  })
+  return { container, root }
 }
 
 function makeLineage(child: Worktree, parent: Worktree): WorktreeLineage {
@@ -434,6 +458,75 @@ describe('DeleteWorktreeDialog lineage copy', () => {
     expect(mocks.state.closeModal).toHaveBeenCalledOnce()
     expect(runWorktreeDeletesInParallel).not.toHaveBeenCalled()
     expect(mocks.state.removeWorktree).not.toHaveBeenCalled()
+  })
+
+  it('uses JJ-specific copy and wraps its footer actions without shrinking labels', async () => {
+    const workspace = makeWorktree('seanettle', '/workspaces/jj')
+    mocks.state.modalData = {
+      worktreeId: workspace.id,
+      worktreeDeleteIdentities: [{ id: workspace.id, instanceId: workspace.instanceId }]
+    }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    mocks.state.repos = [makeJjRepo()]
+
+    const { container, root } = await renderDialog()
+    expect(container.textContent).toContain(
+      "Forget seanettle's JJ workspace registration and choose whether to keep or delete its directory."
+    )
+    expect(container.textContent).not.toContain('from git')
+    expect(
+      screen.getByRole('button', { name: 'Forget and delete directory' }).parentElement
+    ).toHaveClass('delete-worktree-dialog-jj-actions', 'min-w-0', 'flex-wrap')
+    root.unmount()
+  })
+
+  it('routes the rendered JJ Forget registration button to registration-only removal', async () => {
+    const workspace = makeWorktree('JJ workspace', '/workspaces/jj')
+    mocks.state.modalData = {
+      worktreeId: workspace.id,
+      worktreeDeleteIdentities: [{ id: workspace.id, instanceId: workspace.instanceId }]
+    }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    mocks.state.repos = [makeJjRepo()]
+
+    const { root } = await renderDialog()
+    const button = screen.getByRole('button', { name: 'Forget registration' })
+    expect(screen.queryByRole('button', { name: /Don.t ask again/ })).not.toBeInTheDocument()
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(runWorktreeDeletesInParallel).toHaveBeenCalledWith([workspace], {
+      force: false,
+      jjRemoval: 'forget',
+      onForceDeleted: expect.any(Function)
+    })
+    root.unmount()
+  })
+
+  it('routes the rendered JJ Forget and delete directory button to destructive removal', async () => {
+    const workspace = makeWorktree('JJ workspace', '/workspaces/jj')
+    mocks.state.modalData = {
+      worktreeId: workspace.id,
+      worktreeDeleteIdentities: [{ id: workspace.id, instanceId: workspace.instanceId }]
+    }
+    mocks.state.allWorktrees.mockReturnValue([workspace])
+    mocks.state.repos = [makeJjRepo()]
+
+    const { root } = await renderDialog()
+    const button = screen.getByRole('button', { name: 'Forget and delete directory' })
+
+    act(() => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(runWorktreeDeletesInParallel).toHaveBeenCalledWith([workspace], {
+      force: false,
+      jjRemoval: 'forget-and-delete',
+      onForceDeleted: expect.any(Function)
+    })
+    root.unmount()
   })
 
   it('rejects lineage confirmation when a descendant instance changed', async () => {

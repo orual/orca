@@ -105,6 +105,12 @@ export async function executeWorktreeCreation(
           ...(provisionedRoot ? { provisionedRoot } : {}),
           ...(preparedRequest.parentWorktreeId
             ? { parentWorktreeId: preparedRequest.parentWorktreeId }
+            : {}),
+          ...(preparedRequest.workspaceKind
+            ? { workspaceKind: preparedRequest.workspaceKind }
+            : {}),
+          ...(preparedRequest.jjStartRevision
+            ? { jjStartRevision: preparedRequest.jjStartRevision }
             : {})
         }
       )

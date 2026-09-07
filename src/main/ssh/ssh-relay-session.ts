@@ -67,6 +67,8 @@ import {
   getSshFilesystemProvider
 } from '../providers/ssh-filesystem-dispatch'
 import { registerSshGitProvider, unregisterSshGitProvider } from '../providers/ssh-git-dispatch'
+import { SshJjProvider } from '../providers/ssh-jj-provider'
+import { registerSshJjProvider, unregisterSshJjProvider } from '../providers/ssh-jj-dispatch'
 import { notifyRemoteWorkspaceHandlers } from '../ipc/remote-workspace-events'
 import { PortScanner } from './ssh-port-scanner'
 import { isMainWindowVisible, onMainWindowBecameVisible } from '../window/main-window-visibility'
@@ -1187,6 +1189,7 @@ export class SshRelaySession {
       this.remoteCliBridgeEnv?.hostPlatform ?? null
     )
     registerSshGitProvider(this.targetId, gitProvider)
+    registerSshJjProvider(this.targetId, new SshJjProvider(mux))
 
     this.wireUpPtyEvents(ptyProvider, mux, providerGeneration)
     this.wireUpAgentHookEvents(mux)
@@ -1687,6 +1690,7 @@ export class SshRelaySession {
     unregisterSshPtyProvider(this.targetId)
     unregisterSshFilesystemProvider(this.targetId)
     unregisterSshGitProvider(this.targetId)
+    unregisterSshJjProvider(this.targetId)
     this.sourceIdentityByRelayPtyId.clear()
     this.retiredSourceDeliveries.clear()
     this.rejectedPtyRecoveryAttempts.clear()

@@ -239,9 +239,11 @@ export const WORKTREE_METHODS: RpcMethod[] = [
         params.worktree,
         params.force === true,
         params.runHooks === true,
-        params.allowUnverifiedPtyStop === true
+        params.allowUnverifiedPtyStop === true,
+        resolvedHostId,
+        params.jjRemoval
       ] as const
-      const result = await runtime.removeManagedWorktree(...removalArgs, resolvedHostId)
+      const result = await runtime.removeManagedWorktree(...removalArgs)
       return { removed: true, ...result }
     }
   }),

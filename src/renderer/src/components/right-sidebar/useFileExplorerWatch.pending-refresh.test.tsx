@@ -35,6 +35,7 @@ describe('useFileExplorerWatch pending refreshes', () => {
   let mainWatchHandler: WatchHandler | null
   let refreshDir: ReturnType<typeof vi.fn<(dirPath: string) => Promise<void>>>
   let refreshTree: ReturnType<typeof vi.fn<() => Promise<FileExplorerTreeRefreshOutcome>>>
+  let onFilesystemChange: ReturnType<typeof vi.fn<(payload: FsChangedPayload) => void>>
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -50,6 +51,7 @@ describe('useFileExplorerWatch pending refreshes', () => {
     )
     refreshDir = vi.fn(async () => {})
     refreshTree = vi.fn(async () => 'refreshed' as const)
+    onFilesystemChange = vi.fn()
     Object.defineProperty(window, 'api', {
       configurable: true,
       value: {
@@ -83,7 +85,8 @@ describe('useFileExplorerWatch pending refreshes', () => {
           inlineInput: null,
           dragSourcePath: null,
           isNativeDragOver: false,
-          operationOwner: ownerRef.current
+          operationOwner: ownerRef.current,
+          onFilesystemChange
         }),
       { initialProps: { visiblePath: worktreePath } }
     )
@@ -131,6 +134,10 @@ describe('useFileExplorerWatch pending refreshes', () => {
     expect(runtimeWatch.handler).not.toBeNull()
 
     act(() => emit(runtimeWatch.handler!))
+    expect(onFilesystemChange).toHaveBeenCalledWith({
+      worktreePath: '/repo',
+      events: [{ kind: 'create', absolutePath: '/repo/new.ts', isDirectory: false }]
+    })
     expect(refreshDir).not.toHaveBeenCalled()
     await act(async () => vi.advanceTimersByTimeAsync(0))
 

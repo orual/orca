@@ -159,6 +159,22 @@ function buildDetectedGitWorktreesTwoPass(
 }
 
 describe('buildDetectedGitWorktrees classification passes', () => {
+  it('shows verified jj siblings outside the imported checkout and hides unresolved roots', () => {
+    const jjRepo: Repo = { ...repo, kind: 'jj', externalWorktreeVisibilityLegacy: false }
+    const rows = [repo.path, '/elsewhere/task-j', '/elsewhere/missing'].map((path, index) => ({
+      ...gitWorktree(path),
+      branch: '',
+      head: '',
+      jjWorkspace: { name: `workspace-${index}`, root: path, rootResolved: index !== 2 }
+    }))
+    const detected = buildDetectedGitWorktrees(createStore({}, [jjRepo]), jjRepo, rows)
+    expect(detected.map(({ path, visible }) => ({ path, visible }))).toEqual([
+      { path: repo.path, visible: true },
+      { path: '/elsewhere/task-j', visible: true },
+      { path: '/elsewhere/missing', visible: false }
+    ])
+  })
+
   beforeEach(() => {
     toDetectedWorktreeSpy.mockClear()
     // Discovery backfill stamps lastActivityAt from the clock; freeze it so equivalence is deterministic.

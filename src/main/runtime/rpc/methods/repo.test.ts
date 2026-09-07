@@ -3,7 +3,10 @@ import { RpcDispatcher } from '../dispatcher'
 import type { RpcRequest } from '../core'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { REPO_METHODS } from './repo'
-import { WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY } from '../../../../shared/protocol-version'
+import {
+  JJ_REPO_KIND_RUNTIME_CAPABILITY,
+  WORKTREE_VISIBILITY_DEFAULTS_RUNTIME_CAPABILITY
+} from '../../../../shared/protocol-version'
 import { REPO_SEARCH_REFS_MAX_LIMIT } from '../../../../shared/repo-search-limits'
 
 function makeRequest(method: string, params?: unknown): RpcRequest {
@@ -58,6 +61,29 @@ describe('repo RPC methods', () => {
     expect(
       JSON.parse(currentReplies[0]!).result.repos[0].externalWorktreeVisibility
     ).toBeUndefined()
+  })
+
+  it('hides jj repositories from legacy clients while advertising them to capable clients', async () => {
+    const runtime = {
+      getRuntimeId: () => 'test-runtime',
+      enrichMissingRepoGitRemoteIdentities: vi.fn(),
+      listRepos: () => [
+        { id: 'git-1', path: '/git', kind: 'git' },
+        { id: 'jj-1', path: '/jj', kind: 'jj' }
+      ],
+      getClientSettings: () => ({})
+    } as unknown as OrcaRuntimeService
+    const dispatcher = new RpcDispatcher({ runtime, methods: REPO_METHODS })
+    const legacy = await dispatcher.dispatch(makeRequest('repo.list'))
+    const current = await dispatcher.dispatch(makeRequest('repo.list'), {
+      clientCapabilities: [JJ_REPO_KIND_RUNTIME_CAPABILITY]
+    })
+
+    expect(legacy).toMatchObject({ ok: true, result: { repos: [{ id: 'git-1' }] } })
+    expect(current).toMatchObject({
+      ok: true,
+      result: { repos: [{ id: 'git-1' }, { id: 'jj-1', kind: 'jj' }] }
+    })
   })
 
   it('projects inherited visibility on repo mutation responses for old clients', async () => {

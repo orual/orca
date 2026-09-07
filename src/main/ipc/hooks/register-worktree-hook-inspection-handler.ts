@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import { isFolderRepo } from '../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../../shared/repo-kind'
 import { inspectSetupScriptImportCandidates } from '../../../shared/setup-script-imports'
 import { joinWorktreeRelativePath } from '../../runtime/runtime-relative-paths'
 import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
@@ -16,7 +16,7 @@ export function registerWorktreeHookInspectionHandler(context: WorktreeIpcContex
     'hooks:inspectSetupScriptImports',
     async (_event, args: { repoId: string; hostId?: ExecutionHostId }) => {
       const repo = resolveRepoForExecutionHost(store, args.repoId, args.hostId)
-      if (!repo || isFolderRepo(repo)) {
+      if (!repo || isFolderRepo(repo) || !isGitRepoKind(repo)) {
         return []
       }
 

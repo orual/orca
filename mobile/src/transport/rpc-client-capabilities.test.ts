@@ -90,7 +90,7 @@ describe('mobile rpc-client capabilities', () => {
 
     const capabilityRequest = sentRequest(socket, 'runtime.clientCapabilities.update')
     expect(capabilityRequest.params).toMatchObject({
-      clientCapabilities: expect.arrayContaining(['agent-session.structured.v1'])
+      clientCapabilities: expect.arrayContaining(['agent-session.structured.v1', 'repo-kind.jj.v1'])
     })
     expect(socket.sent.some((payload) => payload.includes('session.tabs.subscribe'))).toBe(false)
 

@@ -19,6 +19,30 @@ function negotiate(args: { reject: unknown; current?: boolean }): {
 }
 
 describe('mobile runtime capability negotiation', () => {
+  it('advertises jj support on each new connection negotiation', async () => {
+    const sendRequest = vi.fn(() =>
+      Promise.resolve({ id: 'capability-1', ok: true, result: {} } as RpcResponse)
+    )
+    const onReady = vi.fn()
+    for (let connection = 0; connection < 2; connection += 1) {
+      negotiateMobileRuntimeCapabilities({
+        sendRequest,
+        current: () => true,
+        onReady,
+        onFailure: vi.fn()
+      })
+    }
+
+    await vi.waitFor(() => expect(onReady).toHaveBeenCalledTimes(2))
+    expect(sendRequest).toHaveBeenCalledTimes(2)
+    expect(sendRequest).toHaveBeenNthCalledWith(1, 'runtime.clientCapabilities.update', {
+      clientCapabilities: expect.arrayContaining(['repo-kind.jj.v1'])
+    })
+    expect(sendRequest).toHaveBeenNthCalledWith(2, 'runtime.clientCapabilities.update', {
+      clientCapabilities: expect.arrayContaining(['repo-kind.jj.v1'])
+    })
+  })
+
   it('proceeds when the host never answers, so a slow link still reaches connected', async () => {
     const timedOut = markRpcDeliveryUnknown(
       new Error('Request timed out: runtime.clientCapabilities.update')

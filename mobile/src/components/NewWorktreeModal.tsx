@@ -64,6 +64,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   })
   const navigation = useNewWorktreeDrawerNavigation(visible)
   const [note, setNote] = useState('')
+  const [jjStartRevision, setJjStartRevision] = useState('@')
   const [error, setError] = useState('')
   const runtime = useNewWorkspaceRuntimeContext(client, visible, hostId)
   const { tasksSupported, hostPlatform, getWorktreeCreateCutoverSupport } =
@@ -102,6 +103,7 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
   const createSubmit = useNewWorkspaceCreateSubmit({
     client,
     selectedRepo,
+    jjStartRevision,
     selectedAgent: agentSelection.selectedAgent,
     setSelectedAgent: agentSelection.setSelectedAgent,
     setAgentOverridden: agentSelection.setAgentOverridden,
@@ -127,7 +129,10 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
     onClose
   })
 
-  const selectedRepoIsGit = selectedRepo ? selectedRepo.kind !== 'folder' : true
+  const selectedRepoIsGit = selectedRepo
+    ? selectedRepo.kind !== 'folder' && selectedRepo.kind !== 'jj'
+    : true
+  const selectedRepoIsJj = selectedRepo?.kind === 'jj'
   const sourceAvailability: SmartModeAvailabilityInput = {
     textOnly: selectedRepo != null && !selectedRepoIsGit,
     tasksSupported,
@@ -201,6 +206,9 @@ function NewWorktreeModalContent(props: NewWorktreeModalProps) {
         runTarget={selectedRunTarget}
         projectBadgeColor={selectedRepo ? getMobileWorkspaceRepoBadgeColor(selectedRepo) : null}
         selectedRepoIsGit={selectedRepoIsGit}
+        selectedRepoIsJj={selectedRepoIsJj}
+        jjStartRevision={jjStartRevision}
+        onJjStartRevisionChange={setJjStartRevision}
         selectedRepoConnectionId={selectedRepoConnectionId}
         selectedRepoName={selectedRepo?.displayName ?? 'Remote repository'}
         sshGate={executionTarget.sshGate}

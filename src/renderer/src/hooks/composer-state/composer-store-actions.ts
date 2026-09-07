@@ -61,6 +61,8 @@ export type ComposerStoreActions = {
         executionHostId: ExecutionHostId
         expectedPath: string
       }
+      workspaceKind?: 'jj'
+      jjStartRevision?: string
     }
   ) => Promise<CreateWorktreeResult>
   updateRepo: (

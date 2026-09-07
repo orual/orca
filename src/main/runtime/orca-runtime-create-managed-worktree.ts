@@ -3,15 +3,20 @@ import { OrcaRuntimeWithGetWorktreeTerminalProvisioningHost } from './orca-runti
 import type { RuntimeManagedWorktreeCreateArgs } from './runtime-managed-worktree-create-types'
 import type { CreateWorktreeResult } from '../../shared/worktree/create-types'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isJjRepo } from '../../shared/repo-kind'
 import { resolveWorktreeCreateRoute } from '../worktree-create-execution-host-route'
 import { ExecutionHostNotDispatchableError } from '../providers/execution-host-provider-dispatch'
 import { createRuntimeFolderWorktree } from './runtime-folder-worktree-create'
 import { createRuntimeLocalManagedWorktree } from './runtime-local-worktree-create'
-import { prepareRuntimeLocalWorktreeSetup } from './runtime-local-worktree-setup'
+import {
+  createRuntimeSetupReceipt,
+  createRuntimeStartupTerminal,
+  prepareRuntimeLocalWorktreeSetup
+} from './runtime-local-worktree-setup'
 import { invalidateAuthorizedRootsCache } from '../ipc/filesystem-auth'
 import { startRuntimeLocalWorktreeTerminals } from './runtime-local-worktree-terminal-startup'
-
+import { createJjManagedWorktree } from '../jj/jj-workspace-creation'
+import { getRepoSshConnectionId } from '../../shared/execution-host'
 export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWorktreeTerminalProvisioningHost {
   async createManagedWorktree(
     args: RuntimeManagedWorktreeCreateArgs
@@ -19,7 +24,6 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
     if (!this.store) {
       throw new Error('runtime_unavailable')
     }
-
     const repo = await this.resolveRepoSelector(args.repoSelector)
     const createSettings = this.store.getSettings()
     const requestedAgent = args.startupAgent ?? args.createdWithAgent
@@ -52,19 +56,38 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
         : null
     const effectiveStartup = args.startup ?? agentStartup?.startup ?? draftStartup?.startup
     const effectiveStartupFollowup = agentStartup?.followup
+    const fallbackAgent = requestedAgentEnabled ? requestedAgent : undefined
     const effectiveCreatedWithAgent = args.startup
       ? args.createdWithAgent
-      : (agentStartup?.agent ??
-        draftStartup?.agent ??
-        (requestedAgentEnabled ? requestedAgent : undefined))
+      : (agentStartup?.agent ?? draftStartup?.agent ?? fallbackAgent)
     const effectiveDraftPaste = args.startupDraftPaste ?? draftStartup?.draftPaste
-    // Resolve the execution host once, shared with the `worktrees:create` IPC entry point so the
-    // two cannot answer differently for the same repo. Reading the raw `connectionId` field routes
-    // an `executionHostId: 'ssh:*'`-only repo down the local path, which runs `git worktree add` on
-    // the client against a remote path.
     const createRoute = resolveWorktreeCreateRoute(repo)
-    // `null` on a `runtime:` host is deliberate: its nested target is addressable only inside that
-    // environment, so the trust write must not go to a same-named target in this client's table.
+    const repoIsJj = isJjRepo(repo)
+    if (args.workspaceKind === 'jj' && !repoIsJj) {
+      throw new Error(`jj workspace creation requires a jj repository: ${repo.id}`)
+    }
+    if (repoIsJj) {
+      if (createRoute.kind === 'runtime') {
+        throw new ExecutionHostNotDispatchableError(createRoute.hostId)
+      }
+      return createJjManagedWorktree(this.requireStore(), repo, args, {
+        creationSource: 'runtime',
+        remote: Boolean(getRepoSshConnectionId(repo)),
+        runtimeTarget: this.getLocalGitExecutionOptionArgs(repo)[0],
+        onCreated: (result) => {
+          this.invalidateResolvedWorktreeCache()
+          this.invalidateWorktreeScanCacheForRepo(repo.id)
+          invalidateAuthorizedRootsCache()
+          this.notifyWorktreesChanged(repo.id)
+          this.emitWorktreeLifecycle({
+            kind: 'created',
+            worktreeId: result.worktree.id,
+            path: result.worktree.path,
+            branch: result.worktree.branch
+          })
+        }
+      })
+    }
     const sshConnectionId = createRoute.kind === 'ssh' ? createRoute.connectionId : null
     if (isFolderRepo(repo)) {
       // A folder workspace is a registration, not a filesystem create, so it is host-agnostic —
@@ -106,9 +129,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       throw new ExecutionHostNotDispatchableError(createRoute.hostId)
     }
     if (createRoute.kind === 'ssh') {
-      // `createRoute.repo` carries the resolved connection in `connectionId`, because the
-      // remote-create pipeline still reads `repo.connectionId!` at every depth. See the workaround
-      // note in worktree-create-execution-host-route.ts.
+      // The route carries the resolved connection for the remote-create pipeline.
       const result = await this.createManagedRemoteWorktree(createRoute.repo, {
         ...args,
         activate: args.activate,
@@ -162,7 +183,6 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       })
     const settings = createSettings
     const { lineage, workspaceLineage, warnings: lineageWarnings } = metadataResult
-
     let {
       setup,
       defaultTabs,
@@ -183,16 +203,10 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
         Boolean(this.ptyController?.spawn),
       warning: includeCopyWarning
     })
-
     this.invalidateResolvedWorktreeCache()
     this.invalidateWorktreeScanCacheForRepo(repo.id)
-    // Why: the filesystem-auth layer maintains a separate cache of registered
-    // worktree roots used by git IPC handlers (branchCompare, diff, status, etc.)
-    // to authorize paths. Without invalidating it here, CLI-created worktrees
-    // are not recognized and all git operations fail with "Access denied:
-    // unknown repository or worktree path".
+    // Filesystem auth separately caches registered roots used by Git IPC.
     invalidateAuthorizedRootsCache()
-
     this.notifyWorktreesChanged(repo.id)
     const {
       warning: terminalWarning,
@@ -240,6 +254,13 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       path: worktree.path,
       branch: worktree.branch
     })
+    const startupTerminal = createRuntimeStartupTerminal({
+      didSpawnStartup,
+      startupTerminalHandle,
+      startupTerminalTabId,
+      startupTerminalPaneKey,
+      startupTerminalPtyId
+    })
     return {
       worktree: {
         ...worktree,
@@ -253,23 +274,15 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       ...(returnedSetup ? { setup: returnedSetup } : {}),
       ...(args.awaitTerminalProvisioning
         ? {
-            setupReceipt: {
-              requested: effectiveDecision,
+            setupReceipt: createRuntimeSetupReceipt({
+              effectiveDecision,
               hookFound,
-              startupPolicy: setup?.waitForAgentStartup
-                ? ('wait-for-setup' as const)
-                : ('start-immediately' as const),
-              state: !hookFound
-                ? ('not_configured' as const)
-                : effectiveDecision === 'skip' || !shouldRunSetup
-                  ? ('skipped' as const)
-                  : // Why: the in-process hook is already executing, so reporting
-                    // spawn_failed would strand callers that retry on it.
-                    didSpawnSetup || didStartInProcessSetupHook
-                    ? ('running' as const)
-                    : ('spawn_failed' as const),
-              ...(setupTerminalHandle ? { terminalHandle: setupTerminalHandle } : {})
-            }
+              setup,
+              shouldRunSetup,
+              didSpawnSetup,
+              didStartInProcessSetupHook,
+              setupTerminalHandle
+            })
           }
         : {}),
       ...(defaultTabs ? { defaultTabs } : {}),
@@ -280,18 +293,7 @@ export class OrcaRuntimeWithCreateManagedWorktree extends OrcaRuntimeWithGetWork
       ...(addResult.localBaseRefUpdateSuggestion
         ? { localBaseRefUpdateSuggestion: addResult.localBaseRefUpdateSuggestion }
         : {}),
-      ...(didSpawnStartup && startupTerminalHandle
-        ? {
-            startupTerminal: {
-              spawned: true,
-              handle: startupTerminalHandle,
-              ...(startupTerminalTabId ? { tabId: startupTerminalTabId } : {}),
-              ...(startupTerminalPaneKey ? { paneKey: startupTerminalPaneKey } : {}),
-              ...(startupTerminalPtyId ? { ptyId: startupTerminalPtyId } : {}),
-              surface: 'background' as const
-            }
-          }
-        : {})
+      ...(startupTerminal ? { startupTerminal } : {})
     }
   }
 }

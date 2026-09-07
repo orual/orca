@@ -27,6 +27,8 @@ export function NewWorktreeFormSheet(props: {
   runTarget: Selection | null
   projectBadgeColor: string | null
   selectedRepoIsGit: boolean
+  selectedRepoIsJj: boolean
+  jjStartRevision: string
   selectedRepoConnectionId: string | null
   selectedRepoName: string
   sshGate: WorkspaceSshGate
@@ -51,6 +53,7 @@ export function NewWorktreeFormSheet(props: {
   onOpenAgent: () => void
   onShowAdvancedChange: (show: boolean) => void
   onNoteChange: (note: string) => void
+  onJjStartRevisionChange: (revision: string) => void
   onSetupDecisionChange: (decision: Exclude<WorkspaceCreateSetupDecision, 'inherit'>) => void
   onRunSetupChange: (run: boolean) => void
   onCreate: () => void
@@ -79,16 +82,33 @@ export function NewWorktreeFormSheet(props: {
             onOpenRunTarget={props.onOpenRunTarget}
           />
 
-          <SmartWorkspaceSourceField
-            composer={props.composer}
-            label={props.selectedRepoIsGit ? "Name or 'Create From'" : 'Workspace name'}
-            disabled={props.sshGate.requiresConnection}
-            interactive={props.interactive}
-            onBeforeOpen={props.onClearError}
-            onOpenDrawer={props.onOpenSource}
-          />
+          {props.selectedRepoIsJj ? (
+            <View style={styles.field}>
+              <Text style={styles.label}>Starting revision</Text>
+              <TextInput
+                style={styles.input}
+                value={props.jjStartRevision}
+                onChangeText={props.onJjStartRevisionChange}
+                placeholder="@"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+          ) : null}
 
-          {props.composer.forkPushWarning ? (
+          {!props.selectedRepoIsJj ? (
+            <SmartWorkspaceSourceField
+              composer={props.composer}
+              label={props.selectedRepoIsGit ? "Name or 'Create From'" : 'Workspace name'}
+              disabled={props.sshGate.requiresConnection}
+              interactive={props.interactive}
+              onBeforeOpen={props.onClearError}
+              onOpenDrawer={props.onOpenSource}
+            />
+          ) : null}
+
+          {!props.selectedRepoIsJj && props.composer.forkPushWarning ? (
             <Text style={styles.sourceWarning}>{props.composer.forkPushWarning}</Text>
           ) : null}
 

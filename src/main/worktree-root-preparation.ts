@@ -2,7 +2,7 @@ import { mkdir } from 'node:fs/promises'
 import type { GlobalSettings } from '../shared/global-settings-types'
 import type { Repo } from '../shared/repo-types'
 import { getRepoExecutionHostId, LOCAL_EXECUTION_HOST_ID } from '../shared/execution-host'
-import { isFolderRepo } from '../shared/repo-kind'
+import { isGitRepoKind } from '../shared/repo-kind'
 import { computeWorkspaceRootAsync, getWorktreePathSettings } from './ipc/worktree-logic'
 import { getWorktreeMirrorDistro } from './project-runtime-git-options'
 import type { ProjectRuntimeResolutionStore } from './local-project-runtime-resolution'
@@ -22,7 +22,7 @@ export async function prepareLocalWorktreeRootForRepo(
   store: Pick<WorktreeRootPreparationStore, 'getSettings' | 'getProjects'>,
   repo: Repo
 ): Promise<void> {
-  if (getRepoExecutionHostId(repo) !== LOCAL_EXECUTION_HOST_ID || isFolderRepo(repo)) {
+  if (getRepoExecutionHostId(repo) !== LOCAL_EXECUTION_HOST_ID || !isGitRepoKind(repo)) {
     return
   }
 

@@ -46,7 +46,7 @@ export const ProjectHostSetupExistingFolderIpcArgs = z.object({
     .optional(),
   hostId: z.string().min(1),
   path: z.string().min(1),
-  kind: z.enum(['git', 'folder']).optional(),
+  kind: z.enum(['git', 'folder', 'jj']).optional(),
   displayName: z.string().min(1).optional(),
   setupMethod: z.enum(['imported-existing-folder', 'cloned']).optional()
 })
@@ -79,7 +79,7 @@ export const ProjectHostSetupCreateIpcArgs = z.object({
     }),
   setupId: z.string().min(1).optional(),
   path: z.string().optional(),
-  kind: z.enum(['git', 'folder']).optional(),
+  kind: z.enum(['git', 'folder', 'jj']).optional(),
   displayName: z.string().min(1).optional(),
   worktreeBasePath: z.string().optional(),
   gitUsername: z.string().optional(),
@@ -98,7 +98,7 @@ export const ProjectHostSetupUpdateIpcArgs = z.object({
       .enum(['legacy-repo', 'imported-existing-folder', 'cloned', 'provisioned'])
       .optional(),
     gitUsername: z.string().optional(),
-    kind: z.enum(['git', 'folder']).optional()
+    kind: z.enum(['git', 'folder', 'jj']).optional()
   })
 })
 

@@ -5,7 +5,8 @@ import { getWorktreeIdsWithLiveAgent } from '@/lib/worktree-activity-state'
 import type { Repo } from '../../../../../../shared/repo-types'
 import type { WorktreeLineage } from '../../../../../../shared/worktree/lineage-types'
 import type { ExecutionHostId } from '../../../../../../shared/execution-host'
-import { computeVisibleWorktrees } from '../../visible-worktrees'
+import { getProjectHostSetupProjectionFromState } from '@/store/selectors'
+import { computeVisibleWorktrees, projectSidebarWorktrees } from '../../visible-worktrees'
 import {
   EMPTY_PAIRED_DEVICE_IDS_BY_ENVIRONMENT,
   getPairedDeviceIdsByEnvironment
@@ -47,6 +48,19 @@ export function useVisibleSidebarWorktrees(args: {
     workspaceHostScope
   } = filterState
   const worktreesByRepo = useAppStore((s) => s.worktreesByRepo)
+  const detectedWorktreesByRepo = useAppStore((s) => s.detectedWorktreesByRepo)
+  const repos = useAppStore((s) => s.repos)
+  const projectHostSetupProjection = useAppStore((s) => getProjectHostSetupProjectionFromState(s))
+  const projectedWorktreesByRepo = useMemo(
+    () =>
+      projectSidebarWorktrees(
+        worktreesByRepo,
+        detectedWorktreesByRepo,
+        repos,
+        projectHostSetupProjection.setups
+      ),
+    [detectedWorktreesByRepo, projectHostSetupProjection.setups, repos, worktreesByRepo]
+  )
   const agentStatusEpoch = useAppStore((s) => (!showSleepingWorkspaces ? s.agentStatusEpoch : 0))
   // Why: skip the clock entirely when the epoch is the opt-out sentinel, so a
   // sleeping-workspaces list cannot evict the sample the live lists share.
@@ -75,7 +89,7 @@ export function useVisibleSidebarWorktrees(args: {
     // Keyed on the epoch, not `agentStatusNow`: two bumps in one millisecond
     // share a sample, so the timestamp alone would not re-key this memo.
     void agentStatusEpoch
-    return computeVisibleWorktrees(worktreesByRepo, sortedIds, {
+    return computeVisibleWorktrees(projectedWorktreesByRepo, sortedIds, {
       filterRepoIds,
       showSleepingWorkspaces,
       tabsByWorktree,
@@ -126,7 +140,7 @@ export function useVisibleSidebarWorktrees(args: {
     browserTabsByWorktree,
     sortedIds,
     worktreeLineageById,
-    worktreesByRepo,
+    projectedWorktreesByRepo,
     pairedDeviceIdsByEnvironment
   ])
   // Why: agentStatusEpoch bumps recompute this memo even when membership and

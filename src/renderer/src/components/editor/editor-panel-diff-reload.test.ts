@@ -25,6 +25,7 @@ describe('editor-panel-diff-reload helpers', () => {
     expect(isReloadableSingleFileDiffTab(makeDiffFile())).toBe(true)
     expect(isReloadableSingleFileDiffTab(makeDiffFile({ diffSource: 'staged' }))).toBe(true)
     expect(isReloadableSingleFileDiffTab(makeDiffFile({ diffSource: 'branch' }))).toBe(true)
+    expect(isReloadableSingleFileDiffTab(makeDiffFile({ diffSource: 'jj' }))).toBe(true)
     expect(
       isReloadableSingleFileDiffTab(makeDiffFile({ diffSource: 'combined-uncommitted' }))
     ).toBe(false)
@@ -34,6 +35,7 @@ describe('editor-panel-diff-reload helpers', () => {
     expect(shouldReloadDiffOnGitStatusChange(makeDiffFile())).toBe(true)
     expect(shouldReloadDiffOnGitStatusChange(makeDiffFile({ diffSource: 'staged' }))).toBe(true)
     expect(shouldReloadDiffOnGitStatusChange(makeDiffFile({ diffSource: 'branch' }))).toBe(false)
+    expect(shouldReloadDiffOnGitStatusChange(makeDiffFile({ diffSource: 'jj' }))).toBe(false)
     expect(shouldReloadDiffOnGitStatusChange(makeDiffFile({ mode: 'edit' }))).toBe(false)
   })
 

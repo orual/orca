@@ -34,10 +34,23 @@ function invalidateCombinedDiffCachesForRelativePath(relativePath: string): void
   }
 }
 
+function invalidateCombinedDiffCachesForWorkspace(worktreeId: string): void {
+  const keyPrefix = `${worktreeId}::all-diffs::uncommitted`
+  for (const key of combinedDiffViewStateCache.keys()) {
+    if (key.startsWith(keyPrefix)) {
+      combinedDiffViewStateCache.delete(key)
+      combinedDiffScrollTopCache.delete(key)
+      combinedDiffScrollAnchorCache.delete(key)
+    }
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener(ORCA_EDITOR_EXTERNAL_FILE_CHANGE_EVENT, (event) => {
     const detail = (event as CustomEvent<EditorPathMutationTarget>).detail
-    if (detail?.relativePath) {
+    if (detail?.workspaceWide === true) {
+      invalidateCombinedDiffCachesForWorkspace(detail.worktreeId)
+    } else if (detail?.relativePath) {
       // Why: inactive combined-diff tabs are unmounted, so only a module-level cache bust stops a remount replaying stale bodies.
       invalidateCombinedDiffCachesForRelativePath(detail.relativePath)
     }

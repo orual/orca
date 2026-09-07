@@ -4,6 +4,7 @@ import {
   resolveSetupRunnerShell
 } from '../../worktree-runner-script'
 import { getLocalProjectWorktreeGitOptions } from '../../project-runtime-git-options'
+import { isGitRepoKind } from '../../../shared/repo-kind'
 import type { WorktreeIpcContext } from '../worktrees/worktree-ipc-context'
 
 export function registerWorktreeHookRunnerHandler(context: WorktreeIpcContext): void {
@@ -15,6 +16,9 @@ export function registerWorktreeHookRunnerHandler(context: WorktreeIpcContext): 
       const repo = store.getRepo(args.repoId)
       if (!repo) {
         throw new Error(`Repo not found: ${args.repoId}`)
+      }
+      if (!isGitRepoKind(repo)) {
+        throw new Error('unsupported_repo_kind')
       }
 
       return createIssueCommandRunnerScript(

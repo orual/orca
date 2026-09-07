@@ -1,7 +1,44 @@
-import { writeFile, stat, lstat, mkdir, rename, cp, rm } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { writeFile, stat, lstat, mkdir, rename, cp, rm, chmod } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { expandTilde } from './context'
 import { assertNoClobberRenameDestinationAvailable } from '../shared/filesystem-rename-collision'
 import type { RelayFilesystemWatchRegistry } from './relay-filesystem-watch-registry'
+
+const PRIVATE_WORKSPACE_KEY = /^[a-f0-9]{24,64}$/
+const PRIVATE_RUNNER_EXTENSION = /^(?:sh|cmd)$/
+
+export async function writeRelayPrivateFile(params: Record<string, unknown>): Promise<string> {
+  const workspaceKey = params.workspaceKey
+  const content = params.content
+  const extension = params.extension
+  if (
+    typeof workspaceKey !== 'string' ||
+    !PRIVATE_WORKSPACE_KEY.test(workspaceKey) ||
+    typeof extension !== 'string' ||
+    !PRIVATE_RUNNER_EXTENSION.test(extension) ||
+    typeof content !== 'string'
+  ) {
+    throw new Error('fs.writePrivateFile received invalid setup runner parameters')
+  }
+  const privateRoot = join(homedir(), '.orca', 'jj', 'setup')
+  const directory = join(privateRoot, workspaceKey)
+  const targetPath = join(directory, `setup-runner.${extension}`)
+  await mkdir(privateRoot, { recursive: true, mode: 0o700 })
+  await chmod(privateRoot, 0o700)
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  await chmod(directory, 0o700)
+  const temporaryPath = join(directory, `.setup-runner-${process.pid}-${randomUUID()}.tmp`)
+  try {
+    await writeFile(temporaryPath, content, { encoding: 'utf-8', mode: 0o700 })
+    await chmod(temporaryPath, 0o700)
+    await rename(temporaryPath, targetPath)
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined)
+  }
+  return targetPath
+}
 
 export async function writeRelayFile(params: Record<string, unknown>) {
   const filePath = expandTilde(params.filePath as string)

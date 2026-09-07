@@ -75,6 +75,24 @@ export function getLocalGitOptionsForRepo(
   return getLocalProjectWorktreeGitOptions(store, repo)
 }
 
+export function assertFilesystemGitRepo(
+  store: Store,
+  worktreePath: string,
+  resolvedWorktreePath: string,
+  connectionId?: string
+): void {
+  const repo = connectionId
+    ? store
+        .getRepos()
+        .find(
+          (candidate) => candidate.connectionId === connectionId && candidate.path === worktreePath
+        )
+    : getLocalRepoForRegisteredWorktree(store, worktreePath, resolvedWorktreePath)
+  if (repo?.kind === 'jj') {
+    throw new Error('unsupported_repo_kind')
+  }
+}
+
 export function getLocalGitOptionsForRegisteredWorktree(
   store: Store,
   worktreePath: string,

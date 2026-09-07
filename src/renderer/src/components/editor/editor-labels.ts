@@ -1,5 +1,6 @@
 import type { OpenFile } from '@/store/slices/editor'
 import { basename } from '@/lib/path'
+import { translate } from '@/i18n/i18n'
 
 type EditorLabelVariant = 'fileName' | 'relativePath' | 'fullPath'
 
@@ -17,6 +18,7 @@ function getBaseLabel(file: OpenFile, variant: EditorLabelVariant): string {
 const DIFF_SOURCE_LABELS: Record<string, string> = {
   staged: 'staged diff',
   unstaged: 'diff',
+  jj: translate('auto.components.editor.editorLabels.jujutsuDiff', 'Jujutsu diff'),
   branch: 'branch diff',
   commit: 'commit diff'
 }

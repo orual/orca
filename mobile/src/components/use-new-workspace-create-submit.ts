@@ -37,6 +37,7 @@ type Composer = ReturnType<typeof useMobileComposerSource>
 export function useNewWorkspaceCreateSubmit(args: {
   client: RpcClient | null
   selectedRepo: MobileWorkspaceRepo | null
+  jjStartRevision: string
   selectedAgent: NewWorktreeAgentOption
   setSelectedAgent: (agent: NewWorktreeAgentOption) => void
   setAgentOverridden: (overridden: boolean) => void
@@ -154,28 +155,42 @@ export function useNewWorkspaceCreateSubmit(args: {
         args.selectedAgent.id !== '__blank__' ? args.selectedAgent.id : undefined
       const trimmedNote = args.note.trim() || undefined
       const selection = args.composer.createSelection
-      const result = selection
-        ? await createWorkspaceFromComposerSource({
-            client,
-            selection,
-            targetRepoId: selectedRepo.id,
-            setupDecision,
-            agent: { choice: normalizeWorkspaceAgent(args.selectedAgent.id) ?? 'blank' },
-            workspaceName: trimmedName || undefined,
-            note: trimmedNote,
-            nameIsAutoManaged: args.composer.isNameAutoManaged,
-            worktreeCreateIdempotency: args.getWorktreeCreateCutoverSupport()
-          })
-        : await createBlankWorkspace({
-            client,
-            repoId: selectedRepo.id,
-            baseName,
-            nameWasGenerated: !trimmedName,
-            createdWithAgentId,
-            comment: trimmedNote,
-            setupDecision,
-            worktreeCreateIdempotency: args.getWorktreeCreateCutoverSupport()
-          })
+      const result =
+        selectedRepo.kind === 'jj'
+          ? await createBlankWorkspace({
+              client,
+              repoId: selectedRepo.id,
+              baseName,
+              workspaceKind: 'jj',
+              jjStartRevision: args.jjStartRevision,
+              nameWasGenerated: !trimmedName,
+              createdWithAgentId,
+              comment: trimmedNote,
+              setupDecision,
+              worktreeCreateIdempotency: args.getWorktreeCreateCutoverSupport()
+            })
+          : selection
+            ? await createWorkspaceFromComposerSource({
+                client,
+                selection,
+                targetRepoId: selectedRepo.id,
+                setupDecision,
+                agent: { choice: normalizeWorkspaceAgent(args.selectedAgent.id) ?? 'blank' },
+                workspaceName: trimmedName || undefined,
+                note: trimmedNote,
+                nameIsAutoManaged: args.composer.isNameAutoManaged,
+                worktreeCreateIdempotency: args.getWorktreeCreateCutoverSupport()
+              })
+            : await createBlankWorkspace({
+                client,
+                repoId: selectedRepo.id,
+                baseName,
+                nameWasGenerated: !trimmedName,
+                createdWithAgentId,
+                comment: trimmedNote,
+                setupDecision,
+                worktreeCreateIdempotency: args.getWorktreeCreateCutoverSupport()
+              })
       if ('error' in result) {
         args.setError(result.error)
         return

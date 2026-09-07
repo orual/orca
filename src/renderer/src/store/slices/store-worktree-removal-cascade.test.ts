@@ -247,6 +247,57 @@ describe('removeWorktree cascade', () => {
     expect(s.activeWorktreeId).toBe(worktreeId)
   })
 
+  it('keeps row and renderer state when JJ cleanup is pending', async () => {
+    const store = createTestStore()
+    const worktreeId = 'repo1::/path/jj-wt'
+    mockApi.worktrees.remove.mockResolvedValueOnce({
+      jjCleanupPending: {
+        hostId: 'local',
+        worktreeId,
+        workspaceName: 'JJ workspace',
+        targetRoot: '/path/jj-wt',
+        ownerRoot: '/path'
+      }
+    })
+
+    seedStore(store, {
+      worktreesByRepo: {
+        repo1: [makeWorktree({ id: worktreeId, repoId: 'repo1', path: '/path/jj-wt' })]
+      },
+      tabsByWorktree: {
+        [worktreeId]: [makeTab({ id: 'jj-tab', worktreeId })]
+      },
+      ptyIdsByTabId: { 'jj-tab': ['jj-pty'] },
+      terminalLayoutsByTabId: { 'jj-tab': makeLayout() },
+      activeWorktreeId: worktreeId,
+      activeTabId: 'jj-tab',
+      deleteStateByWorktreeId: {
+        [worktreeId]: {
+          isDeleting: true,
+          error: null,
+          canForceDelete: false,
+          forceDeleteReason: null
+        }
+      }
+    })
+
+    const result = await store
+      .getState()
+      .removeWorktree({ id: worktreeId, executionHostId: null }, false, {
+        jjRemoval: 'forget-and-delete'
+      })
+    const state = store.getState()
+
+    expect(result).toMatchObject({ ok: true, jjCleanupPending: expect.anything() })
+    expect(state.worktreesByRepo.repo1).toHaveLength(1)
+    expect(state.tabsByWorktree[worktreeId]).toHaveLength(1)
+    expect(state.ptyIdsByTabId['jj-tab']).toEqual(['jj-pty'])
+    expect(state.activeWorktreeId).toBe(worktreeId)
+    expect(state.activeTabId).toBe('jj-tab')
+    expect(state.deleteStateByWorktreeId[worktreeId]).toMatchObject({ isDeleting: false })
+    expect(mockApi.pty.kill).not.toHaveBeenCalled()
+  })
+
   it('marks multiple worktrees deleting in one optimistic state update', () => {
     const store = createTestStore()
     const first = 'repo1::/path/wt1'

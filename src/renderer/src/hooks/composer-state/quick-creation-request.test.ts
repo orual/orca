@@ -12,6 +12,8 @@ function createInput(
     linkedWorkItem: null,
     workspaceRunContext: null,
     workspaceName: 'characterize-request',
+    workspaceKind: undefined,
+    jjStartRevision: undefined,
     nameWasGenerated: false,
     displayName: undefined,
     selectedRepoIsGit: true,
@@ -133,5 +135,28 @@ describe('quick composer creation request', () => {
     expect(request).not.toHaveProperty('sparseCheckout')
     expect(request).not.toHaveProperty('linkedGitLabMR')
     expect(request).not.toHaveProperty('linkedGitLabIssue')
+  })
+
+  it('propagates a jj start revision without adding Git-only creation fields', () => {
+    const request = buildQuickCreationRequest(
+      createInput({
+        selectedRepoIsGit: false,
+        workspaceKind: 'jj',
+        jjStartRevision: '@-2',
+        baseBranch: 'main',
+        compareBaseRef: 'origin/main',
+        sparseDirectories: ['src'],
+        pushTarget: { remoteName: 'origin', branchName: 'feature' }
+      })
+    )
+
+    expect(request).toMatchObject({
+      workspaceKind: 'jj',
+      jjStartRevision: '@-2'
+    })
+    expect(request).not.toHaveProperty('baseBranch')
+    expect(request).not.toHaveProperty('compareBaseRef')
+    expect(request).not.toHaveProperty('sparseCheckout')
+    expect(request).not.toHaveProperty('pushTarget')
   })
 })

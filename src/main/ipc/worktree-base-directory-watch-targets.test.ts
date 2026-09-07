@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { join, sep } from 'node:path'
 import type { GlobalSettings } from '../../shared/global-settings-types'
+import type * as WorktreeCommonGitDirectory from './worktree-common-git-directory'
 import type { Repo } from '../../shared/repo-types'
 
-const { getSshFilesystemProviderMock, readFileMock, realpathMock, statMock } = vi.hoisted(() => ({
+const {
+  getSshFilesystemProviderMock,
+  readFileMock,
+  realpathMock,
+  resolveWorktreeCommonGitDirectoryMock,
+  statMock
+} = vi.hoisted(() => ({
   getSshFilesystemProviderMock: vi.fn(),
   readFileMock: vi.fn(),
   realpathMock: vi.fn(),
+  resolveWorktreeCommonGitDirectoryMock: vi.fn(),
   statMock: vi.fn()
 }))
 
@@ -15,6 +23,12 @@ vi.mock('node:fs/promises', () => ({
   realpath: realpathMock,
   stat: statMock
 }))
+
+vi.mock('./worktree-common-git-directory', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorktreeCommonGitDirectory>()
+  resolveWorktreeCommonGitDirectoryMock.mockImplementation(actual.resolveWorktreeCommonGitDirectory)
+  return { ...actual, resolveWorktreeCommonGitDirectory: resolveWorktreeCommonGitDirectoryMock }
+})
 
 vi.mock('../providers/ssh-filesystem-dispatch', () => ({
   getSshFilesystemProvider: getSshFilesystemProviderMock
@@ -69,6 +83,7 @@ describe('worktree base directory watch target resolution', () => {
     statMock.mockReset().mockResolvedValue(localDirectoryStat)
     realpathMock.mockReset().mockImplementation(async (path: string) => path)
     readFileMock.mockReset().mockResolvedValue('')
+    resolveWorktreeCommonGitDirectoryMock.mockClear()
     getSshFilesystemProviderMock.mockReset().mockReturnValue(undefined)
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
@@ -213,6 +228,16 @@ describe('worktree base directory watch target resolution', () => {
     expect(targets.size).toBe(0)
     expect(statMock).not.toHaveBeenCalled()
     expect(getSshFilesystemProviderMock).toHaveBeenCalledWith('missing')
+  })
+
+  it('skips jj workspaces without resolving Git common directories', async () => {
+    const repo = makeRepo(0, { kind: 'jj' })
+
+    const targets = await buildWorktreeBaseDirectoryWatchTargets(makeStore([repo]) as never)
+
+    expect(targets.size).toBe(0)
+    expect(resolveWorktreeCommonGitDirectoryMock).not.toHaveBeenCalled()
+    expect(statMock).not.toHaveBeenCalled()
   })
 
   // A mirrored layout puts the working trees inside the distro while the gitdir

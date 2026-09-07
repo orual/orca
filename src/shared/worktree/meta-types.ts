@@ -2,6 +2,8 @@ import type { ExecutionHostId } from '../execution-host'
 import type { TaskSourceContext } from '../task-source-context'
 import type { EphemeralVmCheckoutMode } from '../orca-yaml-hook-types'
 import type {
+  JjWorkspaceMetadata,
+  JjCleanupPending,
   AutomationWorkspaceProvenance,
   CliWorkspaceProvenance,
   GitPushTarget,
@@ -92,4 +94,8 @@ export type WorktreeMeta = {
   automationProvenance?: AutomationWorkspaceProvenance
   /** System-owned provenance for workspaces created via `orca worktree create`. */
   cliProvenance?: CliWorkspaceProvenance
+  /** See Worktree.jjWorkspace; retained to resolve a later root-less jj listing. */
+  jjWorkspace?: JjWorkspaceMetadata
+  /** Host-qualified proof for explicit cleanup after jj forget succeeded. */
+  jjCleanupPending?: JjCleanupPending
 }

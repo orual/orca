@@ -4,7 +4,7 @@ import { readIssueCommand, writeIssueCommand } from '../issue-command-file'
 import { isENOENT } from '../ipc/filesystem-auth'
 import { getSshFilesystemProvider } from '../providers/ssh-filesystem-dispatch'
 import type { IFilesystemProvider } from '../providers/types'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import { joinWorktreeRelativePath } from './runtime-relative-paths'
 
 type RuntimeRepositoryIssueCommandDeps = {
@@ -58,6 +58,9 @@ export class RuntimeRepositoryIssueCommand {
     const repo = await this.deps.resolveRepo(repoSelector)
     if (isFolderRepo(repo)) {
       return { ok: true }
+    }
+    if (!isGitRepoKind(repo)) {
+      throw new Error('unsupported_repo_kind')
     }
     if (!repo.connectionId) {
       writeIssueCommand(repo.path, content)

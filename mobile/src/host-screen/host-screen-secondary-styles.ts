@@ -6,6 +6,25 @@ export const hostScreenSecondaryStyles = StyleSheet.create({
     color: colors.statusRed,
     fontSize: typography.bodySize
   },
+  removalNotice: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.bgPanel,
+    borderWidth: 1,
+    borderColor: colors.statusRed
+  },
+  removalNoticeTitle: {
+    color: colors.statusRed,
+    fontSize: typography.metaSize,
+    fontWeight: '600'
+  },
+  removalNoticeText: {
+    color: colors.textSecondary,
+    fontSize: typography.metaSize,
+    marginTop: 2
+  },
   list: {
     paddingBottom: spacing.lg
   },

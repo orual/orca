@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react'
 import type { ExecutionHostId } from '../../../src/shared/execution-host'
 import type { RepoIcon } from '../../../src/shared/repo-icon'
-import type { WorkspaceStatusDefinition } from '../../../src/shared/worktree/types'
+import type {
+  JjCleanupPending,
+  WorkspaceStatusDefinition
+} from '../../../src/shared/worktree/types'
 import { getCachedWorktrees } from '../cache/worktree-cache'
 import { createInitialHostRouteActionState } from '../host-route-action-state'
 import type { RpcClient } from '../transport/rpc-client'
@@ -19,6 +22,7 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     hostId ? (getCachedWorktrees(hostId) as Worktree[] | null) : null
   )
   const clientRef = useRef<RpcClient | null>(null)
+  const currentHostIdRef = useRef<string | undefined>(hostId)
   const fetchWorktreesInFlightRef = useRef(false)
   // Why: useRef, not useMemo — React may discard memoized values, which would silently
   // reset the snapshot token this object exists to own.
@@ -68,6 +72,19 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [actionTarget, setActionTarget] = useState<Worktree | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Worktree | null>(null)
+  const [confirmJjRemoval, setConfirmJjRemoval] = useState<{
+    worktree: Worktree
+    mode: 'forget' | 'forget-and-delete' | 'cleanup-only'
+  } | null>(null)
+  const [pendingJjCleanupByIdentity, setPendingJjCleanupByIdentity] = useState(
+    new Map<string, { worktree: Worktree; proof: JjCleanupPending }>()
+  )
+  const [jjRemovalInFlight, setJjRemovalInFlight] = useState<string | null>(null)
+  const [jjRemovalNotice, setJjRemovalNotice] = useState<{
+    identity: string
+    kind: 'uncertain' | 'rejected'
+    message: string
+  } | null>(null)
   const [confirmRemoveHost, setConfirmRemoveHost] = useState(false)
   const [routeActionState, setRouteActionState] = useState(() =>
     createInitialHostRouteActionState(action)
@@ -91,9 +108,14 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     actionTarget,
     catalogError,
     clientRef,
+    currentHostIdRef,
     collapsedGroups,
     confirmDelete,
+    confirmJjRemoval,
     confirmRemoveHost,
+    jjRemovalInFlight,
+    jjRemovalNotice,
+    pendingJjCleanupByIdentity,
     error,
     fetchRepoMetadataInFlightRef,
     fetchRepoMetadataPendingRef,
@@ -119,7 +141,11 @@ export function useHostScreenState(hostId: string | undefined, action: string | 
     setCatalogError,
     setCollapsedGroups,
     setConfirmDelete,
+    setConfirmJjRemoval,
     setConfirmRemoveHost,
+    setJjRemovalInFlight,
+    setJjRemovalNotice,
+    setPendingJjCleanupByIdentity,
     setError,
     setFilters,
     setGroupMode,

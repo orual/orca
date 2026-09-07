@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Repo } from '../../shared/repo-types'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
+import type { ResolvedWorktree } from './runtime-worktree-path-identity'
 import { RuntimeManagedWorktreeQueries } from './runtime-managed-worktree-queries'
 import type { RuntimeStore } from './runtime-store-contract'
 
@@ -40,16 +41,53 @@ function metadata(overrides: Partial<WorktreeMeta> = {}): WorktreeMeta {
   }
 }
 
-function queries(store: RuntimeStore): RuntimeManagedWorktreeQueries {
+function queries(
+  store: RuntimeStore,
+  listResolved: () => Promise<ResolvedWorktree[]> = async () => []
+): RuntimeManagedWorktreeQueries {
   return new RuntimeManagedWorktreeQueries({
     getStore: () => store,
-    listResolved: async () => [],
+    listResolved,
     resolveRepo: async () => store.getRepos()[0]!,
     selectRepos: () => store.getRepos(),
     scanRepo: async () => ({ ok: true, worktrees: [] }),
     listKnownHostIds: () => []
   })
 }
+
+describe('RuntimeManagedWorktreeQueries.list', () => {
+  it('excludes jj rows before host-balanced pagination and count calculation', async () => {
+    const gitRepo = folderRepo({ id: 'git-repo', kind: 'git' })
+    const jjRepo = folderRepo({ id: 'jj-repo', kind: 'jj' })
+    const makeResolved = (repoId: string, id: string, hostId: 'local' | 'ssh:box') =>
+      ({
+        id,
+        repoId,
+        path: `/${repoId}/${id}`,
+        hostId,
+        git: { path: `/${repoId}/${id}` }
+      }) as unknown as ResolvedWorktree
+    const resolved = [
+      makeResolved('jj-repo', 'jj-1', 'ssh:box'),
+      makeResolved('git-repo', 'git-1', 'local'),
+      makeResolved('git-repo', 'git-2', 'ssh:box')
+    ]
+    const store = {
+      getRepos: () => [gitRepo, jjRepo],
+      getRepo: (repoId: string) => [gitRepo, jjRepo].find((repo) => repo.id === repoId),
+      getWorktreeMeta: () => undefined,
+      getSettings: () => settings
+    } as unknown as RuntimeStore
+    const result = await queries(store, async () => resolved).list(undefined, 1, true, {
+      excludeRepoKinds: ['jj']
+    })
+
+    expect(result.worktrees.map((worktree) => worktree.id)).toEqual(['git-1'])
+    expect(result.totalCount).toBe(2)
+    expect(result.truncated).toBe(true)
+    expect(result.hostScope).toEqual({ hostIds: ['local'], omittedHostIds: ['ssh:box'] })
+  })
+})
 
 describe('RuntimeManagedWorktreeQueries.listDetected', () => {
   it("does not project another host's folder metadata", async () => {
@@ -75,6 +113,43 @@ describe('RuntimeManagedWorktreeQueries.listDetected', () => {
       hostId: 'local',
       displayName: 'Local app'
     })
+  })
+
+  it('returns a non-authoritative fallback for an excluded jj repository', async () => {
+    const repo = folderRepo({ id: 'jj-repo', kind: 'jj' })
+    const storedId = `${repo.id}::${repo.path}/feature`
+    const metadataById = { [storedId]: metadata({ displayName: 'Feature' }) }
+    const store = {
+      getRepos: () => [repo],
+      getSettings: () => settings,
+      getAllWorktreeMeta: () => metadataById,
+      getWorktreeMeta: (id: string) => metadataById[id]
+    } as unknown as RuntimeStore
+
+    const result = await queries(store).listDetected(repo, true, { excludeRepoKinds: ['jj'] })
+
+    expect(result).toEqual({
+      repoId: repo.id,
+      authoritative: false,
+      source: 'metadata-fallback',
+      worktrees: []
+    })
+    expect(metadataById[storedId]).toBeDefined()
+  })
+
+  it('suppresses retired names for an excluded repository kind', async () => {
+    const repo = folderRepo({ id: 'jj-repo', kind: 'jj' })
+    const store = {
+      getRepos: () => [repo],
+      getSettings: () => settings,
+      getRetiredWorktreeNameRegistry: vi.fn(),
+      mergeRetiredWorktreeNames: vi.fn()
+    } as unknown as RuntimeStore
+
+    await expect(
+      queries(store).listRetiredNames('id:jj-repo', { excludeRepoKinds: ['jj'] })
+    ).resolves.toEqual({ retiredNamesByRepo: {}, retiredNameTiersByRepo: {} })
+    expect(store.getRetiredWorktreeNameRegistry).not.toHaveBeenCalled()
   })
 
   it('omits host-owned source defaults for clients that do not support them', async () => {

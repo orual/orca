@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Buffer } from 'node:buffer'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
+import { createOutputSink } from './bounded-output-sink'
 import { resolveSpawn, runProcess, runProcessSync } from './run-process'
 import { WINDOWS_ARGUMENT_CORPUS } from './__fixtures__/windows-argument-corpus'
 
@@ -99,7 +101,25 @@ describe('runProcessSync', () => {
   })
 })
 
-describe('bounded output', () => {
+describe('bounded output sink', () => {
+  it('accepts string chunks and caps bytes at the requested bound', () => {
+    const sink = createOutputSink(2)
+    sink.write('éx')
+    sink.write('tail')
+    expect(sink.buffer()).toEqual(Buffer.from('é', 'utf8'))
+    expect(sink.text()).toBe('é')
+    expect(sink.truncated()).toBe(true)
+  })
+
+  it('copies retained buffer bytes instead of retaining a mutable source view', () => {
+    const sink = createOutputSink(2)
+    const source = Buffer.alloc(1024, 7)
+    sink.write(source)
+    source[0] = 9
+    expect(sink.buffer()).toEqual(Buffer.from([7, 7]))
+    expect(sink.truncated()).toBe(true)
+  })
+
   it('reports a clipped answer instead of passing it off as the whole one', async () => {
     const result = await runProcess({
       program: process.execPath,
@@ -118,19 +138,67 @@ describe('bounded output', () => {
     })
     expect(result.outputTruncated).toBe(false)
   })
+
+  it('bounds raw bytes without decoding or retaining bytes past the cap', async () => {
+    const result = await runProcess({
+      program: process.execPath,
+      args: [
+        '-e',
+        'process.stdout.write(Buffer.from([0,255,128,1,2])); process.stderr.write(Buffer.from([253,3,4]))'
+      ],
+      maxOutputBytes: 3,
+      outputEncoding: 'buffer'
+    })
+    expect(result.stdoutBuffer).toEqual(Buffer.from([0, 255, 128]))
+    expect(result.stderrBuffer).toEqual(Buffer.from([253, 3, 4]))
+    expect(result.stdoutBuffer).toHaveLength(3)
+    expect(result.stderrBuffer).toHaveLength(3)
+    expect(result.outputTruncated).toBe(true)
+  })
+
+  it('keeps default output as strings and does not add raw fields', async () => {
+    const result = await runProcess({
+      program: process.execPath,
+      args: ['-e', 'process.stdout.write("hello"); process.stderr.write("warn")']
+    })
+    expect(result.stdout).toBe('hello')
+    expect(result.stderr).toBe('warn')
+    expect(result).not.toHaveProperty('stdoutBuffer')
+    expect(result).not.toHaveProperty('stderrBuffer')
+  })
+
+  it('keeps explicit UTF-8 output as strings without raw fields', async () => {
+    const result = await runProcess({
+      program: process.execPath,
+      args: ['-e', 'process.stdout.write("hello"); process.stderr.write("warn")'],
+      outputEncoding: 'utf8'
+    })
+    expect(result.stdout).toBe('hello')
+    expect(result.stderr).toBe('warn')
+    expect(result).not.toHaveProperty('stdoutBuffer')
+    expect(result).not.toHaveProperty('stderrBuffer')
+  })
 })
 
 describe('unkillable children', () => {
-  it('settles after the grace period rather than outliving its own deadline', async () => {
+  it('settles after the grace period and returns bounded raw output on timeout', async () => {
     // `close` only fires once the child is gone, so a child that ignores the
     // kill would otherwise hold the promise forever — and callers that cache an
     // in-flight probe would hand every later caller the same dead promise.
     const result = await runProcess({
       program: process.execPath,
-      args: ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
-      timeoutMs: 300
+      args: [
+        '-e',
+        'process.stdout.write(Buffer.from([255,128,1,2])); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'
+      ],
+      timeoutMs: 300,
+      maxOutputBytes: 2,
+      outputEncoding: 'buffer'
     })
     expect(result.timedOut).toBe(true)
+    expect(result.stdoutBuffer).toEqual(Buffer.from([255, 128]))
+    expect(result.stdoutBuffer).toHaveLength(2)
+    expect(result.outputTruncated).toBe(true)
   }, 20_000)
 })
 
@@ -141,14 +209,23 @@ describe('abort', () => {
     const controller = new AbortController()
     const pending = runProcess({
       program: process.execPath,
-      args: ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'],
+      args: [
+        '-e',
+        'process.stderr.write(Buffer.from([0,254,3])); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'
+      ],
       timeoutMs: 60_000,
+      maxOutputBytes: 2,
+      outputEncoding: 'buffer',
       signal: controller.signal
     })
     setTimeout(() => controller.abort(), 300)
     const result = await pending
     // Not a timeout: the caller asked it to stop.
     expect(result.timedOut).toBe(false)
+    expect(result.cancelled).toBe(true)
+    expect(result.stderrBuffer).toEqual(Buffer.from([0, 254]))
+    expect(result.stderrBuffer).toHaveLength(2)
+    expect(result.outputTruncated).toBe(true)
   }, 20_000)
 
   it.skipIf(process.platform === 'win32')(

@@ -11,6 +11,7 @@ import { resolveSshWorkspaceForget } from './ssh-workspace-forget-resolution'
 import { isPairedWebClientWindow } from '@/lib/desktop-window-chrome'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import { getRepoExecutionHostId } from '../../../../shared/execution-host'
+import { isJjRepo } from '../../../../shared/repo-kind'
 import {
   resolveWorktreeBatchDeleteTargets,
   toWorktreeDeleteIdentities,
@@ -100,8 +101,9 @@ export function runWorktreeDelete(worktreeId: string, options: WorktreeDeleteOpt
     state.worktreeLineageById
   )
   const hasLineageChildren = deleteLineage.descendants.length > 0
+  const isJjWorkspace = repo != null && isJjRepo(repo)
   const skipConfirm = state.settings?.skipDeleteWorktreeConfirm ?? false
-  if (skipConfirm && !hasLineageChildren) {
+  if (skipConfirm && !hasLineageChildren && !isJjWorkspace) {
     void runWorktreeDeleteWithToast(toWorktreeRemovalTarget(target), target.displayName)
     return
   }
@@ -153,10 +155,19 @@ export function runWorktreeBatchDelete(
         )
       : null
   const singleTargetHasLineageChildren = (singleTargetLineage?.descendants.length ?? 0) > 0
+  const singleTargetRepo =
+    targets.length === 1
+      ? findRepoForHost(state.repos, targets[0].repoId, {
+          hostId: targets[0].hostId,
+          settings: state.settings
+        })
+      : null
+  const singleTargetIsJj = singleTargetRepo != null && isJjRepo(singleTargetRepo)
   const skipConfirm =
     !options.forceConfirm &&
     targets.length === 1 &&
     !singleTargetHasLineageChildren &&
+    !singleTargetIsJj &&
     (state.settings?.skipDeleteWorktreeConfirm ?? false)
   if (skipConfirm) {
     void runWorktreeDeletesInParallel(targets, {

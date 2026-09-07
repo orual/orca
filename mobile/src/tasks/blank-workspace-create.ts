@@ -14,6 +14,8 @@ export async function createBlankWorkspace(args: {
   client: RpcClient
   repoId: string
   baseName: string
+  workspaceKind?: 'jj'
+  jjStartRevision?: string
   createdWithAgentId: TuiAgent | undefined
   comment: string | undefined
   setupDecision: WorkspaceCreateSetupDecision
@@ -31,6 +33,10 @@ export async function createBlankWorkspace(args: {
       const params: Record<string, unknown> = {
         repo: `id:${args.repoId}`,
         setupDecision: args.setupDecision,
+        ...(args.workspaceKind ? { workspaceKind: args.workspaceKind } : {}),
+        ...(args.workspaceKind === 'jj'
+          ? { jjStartRevision: args.jjStartRevision?.trim() || '@' }
+          : {}),
         name,
         ...(args.nameWasGenerated
           ? { displayNameKind: 'generated' as const }

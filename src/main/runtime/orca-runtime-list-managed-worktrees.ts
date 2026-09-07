@@ -8,6 +8,7 @@ import { stopMissingWorktreeTerminals } from './missing-worktree-terminal-reconc
 import type { RuntimeCommandSurfaceHost } from './orca-runtime-core'
 import type { WorktreeVisibilitySourceMatcher } from '../../shared/worktree/visibility-sources'
 import type { RuntimeStore } from './runtime-store-contract'
+import type { RuntimeWorktreeListingOptions } from './runtime-managed-worktree-queries'
 import type {
   WorkspacePortKillRequest,
   WorkspacePortKillResult,
@@ -24,31 +25,35 @@ export class OrcaRuntimeWithListManagedWorktrees extends OrcaRuntimeWithRestoreS
   listManagedWorktrees(
     repoSelector?: string,
     limit = DEFAULT_WORKTREE_LIST_LIMIT,
-    sourceDefaultsSupported = true
+    sourceDefaultsSupported = true,
+    options?: RuntimeWorktreeListingOptions
   ): Promise<RuntimeWorktreeListResult> {
-    return this.managedWorktreeQueries.list(repoSelector, limit, sourceDefaultsSupported)
+    return this.managedWorktreeQueries.list(repoSelector, limit, sourceDefaultsSupported, options)
   }
 
-  listRetiredWorktreeNames(repoSelector: string) {
-    return this.managedWorktreeQueries.listRetiredNames(repoSelector)
+  listRetiredWorktreeNames(repoSelector: string, options?: RuntimeWorktreeListingOptions) {
+    return this.managedWorktreeQueries.listRetiredNames(repoSelector, options)
   }
 
   async listDetectedManagedWorktrees(
     repoSelector: string,
     connectionId?: string | null,
-    sourceDefaultsSupported = true
+    sourceDefaultsSupported = true,
+    options?: RuntimeWorktreeListingOptions
   ): Promise<DetectedWorktreeListResult> {
     return this.listDetectedWorktreesForResolvedRepo(
       await this.resolveRepoSelectorForConnection(repoSelector, connectionId),
-      sourceDefaultsSupported
+      sourceDefaultsSupported,
+      options
     )
   }
 
   protected listDetectedWorktreesForResolvedRepo(
     repo: Repo,
-    sourceDefaultsSupported = true
+    sourceDefaultsSupported = true,
+    options?: RuntimeWorktreeListingOptions
   ): Promise<DetectedWorktreeListResult> {
-    return this.managedWorktreeQueries.listDetected(repo, sourceDefaultsSupported)
+    return this.managedWorktreeQueries.listDetected(repo, sourceDefaultsSupported, options)
   }
 
   async teardownMissingManagedWorktreeTerminals(

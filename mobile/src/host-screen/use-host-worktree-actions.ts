@@ -1,8 +1,14 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { Alert } from 'react-native'
 import type { useRouter } from 'expo-router'
 import { floatingWorkspaceSessionPath } from '../session/floating-workspace'
 import { savePinnedIds } from '../storage/preferences'
+import {
+  getJjRemovalRowIdentity,
+  requestJjWorktreeRemoval,
+  resolveJjRemovalHostId,
+  type JjRemovalMode
+} from './jj-worktree-removal'
 import type { useForgetHostClient } from '../transport/client-context'
 import { removeHostAndCloseClient } from '../transport/host-removal-lifecycle'
 import type { RpcClient } from '../transport/rpc-client'
@@ -38,15 +44,23 @@ export function useHostWorktreeActions(args: {
   const {
     newWorktreeModalRef,
     newWorktreeModalVisibleRef,
+    clientRef,
+    currentHostIdRef,
     pinnedIds,
+    repoHostIdByRepoId,
     setConfirmRemoveHost,
+    setJjRemovalInFlight,
+    setJjRemovalNotice,
     setLastKnownWorktrees,
     setOptimisticActiveWorktreeIdentity,
+    setPendingJjCleanupByIdentity,
     setPinnedIds,
     setRouteActionState,
     setWorktrees,
     worktrees
   } = state
+
+  const jjRemovalOperationRef = useRef(0)
 
   const leaveHost = useCallback(() => {
     leaveHostRoute(router)
@@ -112,9 +126,110 @@ export function useHostWorktreeActions(args: {
     [client, worktrees, pinnedIds, updateLocalPins]
   )
 
+  const handleJjRemoval = useCallback(
+    async (item: Worktree, mode: JjRemovalMode) => {
+      if (!client || item.workspaceKind !== 'jj') {
+        return
+      }
+      const hostId = resolveJjRemovalHostId(item, repoHostIdByRepoId)
+      const identity = getJjRemovalRowIdentity(item, repoHostIdByRepoId)
+      if (!hostId || !identity) {
+        setJjRemovalNotice({
+          identity: `${item.hostId ?? 'unresolved'}|${item.worktreeId}`,
+          kind: 'rejected',
+          message: 'Orca cannot determine which execution host owns this workspace.'
+        })
+        return
+      }
+      if (state.jjRemovalInFlight === identity) {
+        return
+      }
+      if (
+        state.jjRemovalNotice?.identity === identity &&
+        state.jjRemovalNotice.kind === 'uncertain'
+      ) {
+        return
+      }
+      if (mode === 'cleanup-only') {
+        const pending = state.pendingJjCleanupByIdentity.get(identity)
+        if (
+          !pending ||
+          pending.proof.hostId !== hostId ||
+          pending.proof.worktreeId !== item.worktreeId
+        ) {
+          setJjRemovalNotice({
+            identity,
+            kind: 'rejected',
+            message: 'No host-qualified cleanup proof is available; refresh and try again.'
+          })
+          return
+        }
+      }
+
+      setJjRemovalInFlight(identity)
+      setJjRemovalNotice(null)
+      const operation = ++jjRemovalOperationRef.current
+      const requestClient = client
+      const requestHostId = hostId
+      const outcome = await requestJjWorktreeRemoval({
+        client: requestClient,
+        worktree: item,
+        hostId,
+        mode
+      })
+      if (
+        clientRef.current !== requestClient ||
+        currentHostIdRef.current !== requestHostId ||
+        jjRemovalOperationRef.current !== operation
+      ) {
+        return
+      }
+      if (outcome.kind === 'removed') {
+        const removeFromList = (list: Worktree[]) => removeWorktreeRow(list, item)
+        setWorktrees(removeFromList)
+        setLastKnownWorktrees(removeFromList)
+        setPendingJjCleanupByIdentity((previous) => {
+          if (!previous.has(identity)) {
+            return previous
+          }
+          const next = new Map(previous)
+          next.delete(identity)
+          return next
+        })
+        setJjRemovalNotice(null)
+      } else if (outcome.kind === 'pending') {
+        setPendingJjCleanupByIdentity((previous) =>
+          new Map(previous).set(identity, { worktree: { ...item, hostId }, proof: outcome.proof })
+        )
+        setJjRemovalNotice(null)
+      } else {
+        setJjRemovalNotice({ identity, kind: outcome.kind, message: outcome.message })
+      }
+      if (
+        clientRef.current === requestClient &&
+        currentHostIdRef.current === requestHostId &&
+        jjRemovalOperationRef.current === operation
+      ) {
+        setJjRemovalInFlight(null)
+        // Reconcile rejected/ambiguous and pending outcomes without replaying the mutation.
+        void fetchWorktrees()
+      }
+    },
+    [
+      client,
+      fetchWorktrees,
+      repoHostIdByRepoId,
+      state.jjRemovalInFlight,
+      state.jjRemovalNotice,
+      state.pendingJjCleanupByIdentity,
+      clientRef,
+      currentHostIdRef
+    ]
+  )
+
   const handleDeleteWorktree = useCallback(
     async (item: Worktree) => {
-      if (!client) {
+      if (!client || item.workspaceKind === 'jj') {
         return
       }
 
@@ -198,6 +313,7 @@ export function useHostWorktreeActions(args: {
 
   return {
     handleDeleteWorktree,
+    handleJjRemoval,
     handleRemoveHost,
     leaveHost,
     navigateFromHostList,

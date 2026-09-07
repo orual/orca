@@ -56,7 +56,8 @@ export type MobileSessionTab =
       relativePath: string
       language?: string
       mode?: 'edit' | 'diff'
-      diffSource?: 'staged' | 'unstaged' | 'branch' | 'commit'
+      diffSource?: 'staged' | 'unstaged' | 'branch' | 'commit' | 'jj'
+      jjParentRevision?: string
       isDirty: boolean
       isActive: boolean
     }

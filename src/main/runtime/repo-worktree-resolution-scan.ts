@@ -1,10 +1,15 @@
 import type { GitWorktreeInfo } from '../../shared/worktree/types'
 import { listWorktreesStrict } from '../git/worktree'
+import type { JjWorkspace } from '../../shared/jj-types'
 import type { LocalProjectWorktreeGitOptions } from '../project-runtime-git-options'
 
-export type RuntimeWorktreeScanResult =
-  | { ok: true; worktrees: GitWorktreeInfo[] }
-  | { ok: false; worktrees: GitWorktreeInfo[] }
+export type RuntimeWorktreeScanResult = {
+  provider?: 'git' | 'jj'
+  ok: boolean
+  worktrees: GitWorktreeInfo[]
+  complete?: boolean
+  workspaces?: JjWorkspace[]
+}
 
 export async function scanLocalRepoWorktreesForResolution(
   repoPath: string,

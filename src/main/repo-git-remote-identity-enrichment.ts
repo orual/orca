@@ -5,6 +5,7 @@ import {
   type ExecutionHostId
 } from '../shared/execution-host'
 import type { Repo } from '../shared/repo-types'
+import { isGitRepoKind } from '../shared/repo-kind'
 import { probeGitRemoteIdentity } from './repo-git-remote-identity'
 
 const NO_IDENTITY_RETRY_TTL_MS = 5 * 60 * 1000
@@ -68,7 +69,7 @@ function getCurrentRepo(store: RepoIdentityStore, id: string): Repo | undefined 
 function isSameProbedRepo(snapshot: Repo, current: Repo | undefined): current is Repo {
   return (
     !!current &&
-    current.kind !== 'folder' &&
+    isGitRepoKind(current) &&
     current.path === snapshot.path &&
     getRepoExecutionHostId(current) === getRepoExecutionHostId(snapshot)
   )
@@ -128,6 +129,11 @@ async function enrichRepoGitRemoteIdentity(store: RepoIdentityStore, repo: Repo)
     if (controller.signal.aborted) {
       return false
     }
+    // A repo can change kind while the probe is pending; do not seed a retry or
+    // refresh deadline for a row that is no longer a Git repo.
+    if (!isSameProbedRepo(repo, getCurrentRepo(store, repo.id))) {
+      return false
+    }
     if (result.status !== 'resolved') {
       // Why: repos without a parseable remote are common; cache misses briefly so
       // list calls stay cheap while still allowing recent remote changes to land.
@@ -166,9 +172,7 @@ function isIdentityRefreshDue(repo: Repo, now: number): boolean {
  * retired SSH hosts do not accumulate — or keep a git child alive — for the life of the process.
  */
 function retireRemovedLocations(allRepos: Repo[]): void {
-  const liveKeys = new Set(
-    allRepos.filter((repo) => repo.kind !== 'folder').map(getRepoLocationKey)
-  )
+  const liveKeys = new Set(allRepos.filter(isGitRepoKind).map(getRepoLocationKey))
   for (const locationKey of probeRetryAfterByLocation.keys()) {
     if (!liveKeys.has(locationKey)) {
       probeRetryAfterByLocation.delete(locationKey)
@@ -187,7 +191,7 @@ function retireRemovedLocations(allRepos: Repo[]): void {
 
 function selectEnrichmentCandidates(store: RepoIdentityStore): Repo[] {
   const now = Date.now()
-  const repos = store.getRepos().filter((repo) => repo.kind !== 'folder')
+  const repos = store.getRepos().filter(isGitRepoKind)
   // Why: the settled `null` marker stays a candidate on purpose — a repo that
   // gains a remote later must still resolve. Do not tighten this to
   // `=== undefined`; the retry TTL already bounds the cost and `writeIdentity`

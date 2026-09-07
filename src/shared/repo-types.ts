@@ -7,7 +7,7 @@ import type { RepoSourceControlAiOverrides } from './source-control-ai-types'
 import type { RepoProjectHostSetupMethod } from './project-types'
 
 // ─── Repo ────────────────────────────────────────────────────────────
-export type RepoKind = 'git' | 'folder'
+export type RepoKind = 'git' | 'folder' | 'jj'
 
 /**
  * Per-repo user choice for where issues are fetched and filed.

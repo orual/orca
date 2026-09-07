@@ -27,6 +27,8 @@ export type NestedRepoCandidate = {
   path: string
   displayName: string
   depth: number
+  /** Cheap marker classification; authoritative import still probes the owner host. */
+  kind?: 'git' | 'jj'
 }
 
 export type NestedRepoScanResult = {

@@ -87,6 +87,9 @@ export function buildComposerCardProps(state: ComposerModel) {
     selectedRepoConnectionId,
     selectedRepoGitHubSourceContext,
     selectedRepoIsGit,
+    selectedRepoIsJj,
+    jjStartRevision,
+    setJjStartRevision,
     selectedRepoProjectId,
     selectedRepoRequiresConnection,
     shouldWaitForIssueAutomationCheck,
@@ -142,6 +145,10 @@ export function buildComposerCardProps(state: ComposerModel) {
     projectOptions,
     selectedProjectId,
     selectedRepoIsGit: isProjectGroupTarget ? true : selectedRepoIsGit,
+    selectedRepoIsJj: isProjectGroupTarget ? false : selectedRepoIsJj,
+    jjStartRevision: isProjectGroupTarget || !selectedRepoIsJj ? '@' : jjStartRevision,
+    onJjStartRevisionChange:
+      isProjectGroupTarget || !selectedRepoIsJj ? () => {} : setJjStartRevision,
     onRepoChange: isProjectGroupTarget ? handleFolderSourceRepoChange : handleRepoChange,
     onProjectChange: handleProjectChange,
     projectHostSetupOptions: isProjectGroupTarget ? [] : projectHostSetupOptions,
@@ -261,7 +268,7 @@ export function buildComposerCardProps(state: ComposerModel) {
     onSparseSelectPreset: isProjectGroupTarget ? () => {} : handleSparseSelectPreset,
     branchesEnabled: !isProjectGroupTarget,
     setupControlsEnabled: !isProjectGroupTarget,
-    sparseControlsEnabled: !isProjectGroupTarget
+    sparseControlsEnabled: !isProjectGroupTarget && selectedRepoIsGit
   }
 
   return { cardProps, createDisabled }

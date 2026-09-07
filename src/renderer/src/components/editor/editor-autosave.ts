@@ -22,6 +22,8 @@ export type EditorPathMutationTarget = {
   worktreePath: string
   relativePath: string
   runtimeEnvironmentId?: string | null
+  /** Revalidate every reloadable tab in this worktree after an owner-wide mutation. */
+  workspaceWide?: true
   allowLocalWindowsWslAliases?: true
   indexedOpenFiles?: {
     matches: (openFiles: OpenFile[]) => OpenFile[]
@@ -133,9 +135,18 @@ export function getOpenFilesForExternalFileChange(
   if (target.indexedOpenFiles) {
     return target.indexedOpenFiles.matches(openFiles)
   }
-  const absolutePath = joinPath(target.worktreePath, target.relativePath)
   const hasRuntimeOwnerFilter = Object.hasOwn(target, 'runtimeEnvironmentId')
   const targetRuntimeOwner = target.runtimeEnvironmentId?.trim() || null
+  if (target.workspaceWide === true) {
+    return openFiles.filter(
+      (file) =>
+        file.worktreeId === target.worktreeId &&
+        (!hasRuntimeOwnerFilter ||
+          (file.runtimeEnvironmentId?.trim() || null) === targetRuntimeOwner) &&
+        (isExternalReloadableEditorTab(file) || isWorkingTreeCombinedDiffTab(file))
+    )
+  }
+  const absolutePath = joinPath(target.worktreePath, target.relativePath)
   return openFiles.filter((file) => {
     if (file.worktreeId !== target.worktreeId) {
       return false

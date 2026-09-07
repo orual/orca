@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
-import { getAllWorktreesFromState } from '@/store/selectors'
 import { track } from '@/lib/telemetry'
 import { tabHasLivePty } from '@/lib/tab-has-live-pty'
 import { persistWorktreeSortOrderByHost } from '@/lib/worktree-sort-order-persistence'
@@ -104,9 +103,7 @@ export function useSidebarWorktreeSortOrder(args: {
 
   const recomputedSort = useMemo(() => {
     const state = useAppStore.getState()
-    const nonArchivedWorktrees = getAllWorktreesFromState(state).filter(
-      (worktree) => !worktree.isArchived
-    )
+    const nonArchivedWorktrees = allWorktrees.filter((worktree) => !worktree.isArchived)
     const now = Date.now()
     // Why precompute: the label tiebreaker runs on every comparison in every mode.
     const labels = buildWorktreeSortLabels(nonArchivedWorktrees)
@@ -159,7 +156,7 @@ export function useSidebarWorktreeSortOrder(args: {
     }
     // debouncedSortEpoch is an intentional trigger not read in the memo; its change (debounced) signals a recompute.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSortEpoch, repoMap, sortBy])
+  }, [allWorktrees, debouncedSortEpoch, repoMap, sortBy])
   // Why: stable ID order prevents rank-only refreshes from echoing an unchanged snapshot.
   const sortedIds = useReusedArrayIdentity(recomputedSort.sortedIds)
 

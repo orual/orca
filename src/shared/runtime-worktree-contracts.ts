@@ -7,7 +7,7 @@ import type {
   WorktreeLineageWarning
 } from './worktree/lineage-types'
 import type { RuntimeListingHostScope } from './runtime-listing-host-scope'
-import type { GitWorktreeInfo, Worktree } from './worktree/types'
+import type { GitWorktreeInfo, JjWorkspaceMetadata, Worktree } from './worktree/types'
 
 export type RuntimeWorktreeAgentRow = {
   paneKey: string
@@ -28,7 +28,9 @@ export type RuntimeWorktreeAgentRow = {
 }
 
 export type RuntimeWorktreePsSummary = {
-  workspaceKind?: 'git' | 'folder-workspace'
+  workspaceKind?: 'git' | 'jj' | 'folder-workspace'
+  /** Provider-specific identity for jj workspaces; omitted for Git/folder rows and legacy hosts. */
+  jjWorkspace?: JjWorkspaceMetadata
   worktreeId: string
   repoId: string
   hostId?: Worktree['hostId']

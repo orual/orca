@@ -40,6 +40,9 @@ export type NewWorkspaceComposerCardProps = {
   projectOptions?: NewWorkspaceProjectOption[]
   selectedProjectId?: string | null
   selectedRepoIsGit: boolean
+  selectedRepoIsJj?: boolean
+  jjStartRevision?: string
+  onJjStartRevisionChange?: (value: string) => void
   onRepoChange: (value: string) => void
   onProjectChange: (value: string) => void
   projectHostSetupOptions?: ProjectHostSetupOption[]

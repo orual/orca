@@ -54,7 +54,7 @@ export function isWorktreeActive(w: Worktree): boolean {
 }
 
 function isDefaultBranchWorkspace(w: Worktree): boolean {
-  if (w.workspaceKind === 'folder-workspace') {
+  if (w.workspaceKind === 'folder-workspace' || w.workspaceKind === 'jj') {
     return false
   }
   if (w.isMainWorktree !== undefined) {
@@ -110,6 +110,7 @@ export function filterWorktrees(
       (w) =>
         w.displayName.toLowerCase().includes(q) ||
         w.branch.toLowerCase().includes(q) ||
+        (w.jjWorkspace?.name ?? '').toLowerCase().includes(q) ||
         w.repo.toLowerCase().includes(q)
     )
   }

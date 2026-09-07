@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import type { ExecutionHostId } from '../../../shared/execution-host'
-import { isFolderRepo } from '../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../../shared/repo-kind'
 import { joinWorktreeRelativePath } from '../../runtime/runtime-relative-paths'
 import { getSshFilesystemProvider } from '../../providers/ssh-filesystem-dispatch'
 import { isENOENT } from '../filesystem-path-containment'
@@ -16,7 +16,7 @@ export function registerWorktreeHookFileHandlers(context: WorktreeIpcContext): v
     'hooks:readIssueCommand',
     async (_event, args: { repoId: string; hostId?: ExecutionHostId }) => {
       const repo = resolveRepoForExecutionHost(store, args.repoId, args.hostId)
-      if (!repo || isFolderRepo(repo)) {
+      if (!repo || isFolderRepo(repo) || !isGitRepoKind(repo)) {
         return {
           status: 'ok',
           localContent: null,
@@ -85,6 +85,9 @@ export function registerWorktreeHookFileHandlers(context: WorktreeIpcContext): v
       const repo = resolveRepoForExecutionHost(store, args.repoId, args.hostId)
       if (!repo || isFolderRepo(repo)) {
         return
+      }
+      if (!isGitRepoKind(repo)) {
+        throw new Error('unsupported_repo_kind')
       }
       if (repo.connectionId) {
         const issueCommandPath = joinWorktreeRelativePath(repo.path, '.orca/issue-command')

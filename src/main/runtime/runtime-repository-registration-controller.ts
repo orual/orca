@@ -7,9 +7,10 @@ import {
   parseExecutionHostId,
   type ExecutionHostId
 } from '../../shared/execution-host'
-import type { Repo } from '../../shared/repo-types'
+import type { Repo, RepoKind } from '../../shared/repo-types'
 import { gitExecFileAsync, awaitWindowsHostGitEnvironmentReady } from '../git/runner'
 import { getRepoName, isGitRepo } from '../git/repo'
+import { findImportedJjRepo, probeLocalJjRepo } from '../ipc/repos/local-repo-registration'
 import { invalidateAuthorizedRootsCache, isENOENT } from '../ipc/filesystem-auth'
 import { detectRepoIconAndUpstream } from '../repo-icon-autodetect'
 import { prepareLocalWorktreeRootForRepo } from '../worktree-root-preparation'
@@ -29,7 +30,7 @@ export class RuntimeRepositoryRegistrationController {
 
   async add(
     path: string,
-    kind: 'git' | 'folder' = 'git',
+    kind: RepoKind = 'git',
     executionHostId?: ExecutionHostId | null,
     displayName?: string
   ): Promise<Repo> {
@@ -37,15 +38,24 @@ export class RuntimeRepositoryRegistrationController {
     if (!isAbsolute(path)) {
       throw new Error('Project path must be an absolute path')
     }
-    if (kind === 'git') {
+    const jjProbe =
+      kind === 'folder' ? { kind: 'not-jj' as const } : await probeLocalJjRepo(path, kind === 'jj')
+    if (jjProbe.kind === 'unavailable') {
+      throw new Error(jjProbe.error)
+    }
+    const repoKind: RepoKind = jjProbe.kind === 'jj' ? 'jj' : kind
+    const jjRoot = jjProbe.kind === 'jj' ? jjProbe.root : null
+    const resolvedPath = repoKind === 'jj' ? jjRoot! : path
+    if (repoKind === 'git') {
       await awaitWindowsHostGitEnvironmentReady({ cwd: path })
     }
-    if (kind === 'git' && !isGitRepo(path)) {
+    if (repoKind === 'git' && !isGitRepo(path)) {
       throw new Error(`Not a valid git repository: ${path}`)
     }
     const existing = store.getRepos().find((repo) => {
       return (
-        runtimePathsEqual(repo.path, path) && runtimeRepoMatchesExecutionHost(repo, executionHostId)
+        runtimePathsEqual(repo.path, resolvedPath) &&
+        runtimeRepoMatchesExecutionHost(repo, executionHostId)
       )
     })
     if (existing) {
@@ -61,27 +71,46 @@ export class RuntimeRepositoryRegistrationController {
       }
       return existing
     }
+    if (repoKind === 'jj') {
+      const existingByIdentity = await findImportedJjRepo({
+        repos: store.getRepos(),
+        identity: jjProbe.kind === 'jj' ? jjProbe.detection.repositoryIdentity : null,
+        executionHostId: executionHostId ?? LOCAL_EXECUTION_HOST_ID,
+        detectIdentity: async (repo) => {
+          const probe = await probeLocalJjRepo(repo.path, true)
+          return probe.kind === 'jj' ? probe.detection.repositoryIdentity : null
+        }
+      })
+      if (existingByIdentity) {
+        return existingByIdentity
+      }
+    }
     // Local on purpose, whatever `executionHostId` stamps on the row: this controller already
     // validated and will read `path` in this process. A `runtime:` stamp is how a paired client
     // addresses the row, not a second machine holding the files.
-    const detected = await detectRepoIconAndUpstream({
-      repoPath: path,
-      kind,
-      executionHostId: LOCAL_EXECUTION_HOST_ID
-    })
+    const detected =
+      repoKind === 'jj'
+        ? {}
+        : await detectRepoIconAndUpstream({
+            repoPath: resolvedPath,
+            kind: repoKind,
+            executionHostId: LOCAL_EXECUTION_HOST_ID
+          })
     const repo: Repo = {
       id: randomUUID(),
-      path,
-      displayName: displayName?.trim() || getRepoName(path),
+      path: resolvedPath,
+      displayName: displayName?.trim() || getRepoName(resolvedPath),
       badgeColor: DEFAULT_REPO_BADGE_COLOR,
       ...(executionHostId != null ? { executionHostId } : {}),
       ...detected,
       addedAt: Date.now(),
-      kind,
-      ...(kind === 'git' ? { externalWorktreeVisibilityLegacy: false } : {})
+      kind: repoKind,
+      ...(repoKind === 'git' ? { externalWorktreeVisibilityLegacy: false } : {})
     }
     store.addRepo(repo)
-    await prepareLocalWorktreeRootForRepo(store, repo)
+    if (repoKind === 'git') {
+      await prepareLocalWorktreeRootForRepo(store, repo)
+    }
     this.invalidate(repo.id)
     return store.getRepo(repo.id) ?? repo
   }

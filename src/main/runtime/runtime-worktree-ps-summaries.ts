@@ -30,8 +30,10 @@ export function buildRuntimeWorktreePsSummaries(args: {
       linkedPR = { number: meta.linkedPR, state: 'unknown' }
     }
     const lineage = worktree.lineage
+    const jjWorkspace = worktree.jjWorkspace ?? worktree.git?.jjWorkspace
     summaries.set(worktree.id, {
-      workspaceKind: 'git',
+      workspaceKind: jjWorkspace ? 'jj' : 'git',
+      ...(jjWorkspace ? { jjWorkspace } : {}),
       worktreeId: worktree.id,
       repoId: worktree.repoId,
       ...((meta?.hostId ?? worktree.hostId) ? { hostId: meta?.hostId ?? worktree.hostId } : {}),

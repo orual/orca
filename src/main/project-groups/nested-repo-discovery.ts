@@ -2,6 +2,8 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { NestedRepoCandidate, NestedRepoScanResult } from '../../shared/project-group-types'
 import { isGitRepo } from '../git/repo'
+import { awaitWindowsHostGitEnvironmentReady } from '../git/runner'
+import { probeLocalJjMarker } from '../ipc/repos/local-repo-registration'
 import {
   isIgnoredNestedRepoDirectory,
   normalizeNestedRepoScanOptions,
@@ -11,19 +13,52 @@ import {
   type TraversalFolder
 } from './nested-repo-scan-rules'
 
+function isMissingMarkerError(error: unknown): boolean {
+  const code =
+    error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : null
+  return code === 'ENOENT' || code === 'ENOTDIR'
+}
+
+async function hasJjMarker(dirPath: string): Promise<boolean> {
+  try {
+    const marker = await stat(join(dirPath, '.jj'))
+    return marker.isDirectory() || marker.isFile()
+  } catch (error) {
+    if (isMissingMarkerError(error)) {
+      return false
+    }
+    throw error
+  }
+}
+
 async function hasGitMarker(dirPath: string): Promise<boolean> {
   try {
     const marker = await stat(join(dirPath, '.git'))
     if (marker.isDirectory() || marker.isFile()) {
       return true
     }
-  } catch {
+  } catch (error) {
+    if (!isMissingMarkerError(error)) {
+      throw error
+    }
     // Continue to cheap bare-repository marker checks below.
   }
+  const markerStat = async (path: string) => {
+    try {
+      return await stat(path)
+    } catch (error) {
+      if (isMissingMarkerError(error)) {
+        return null
+      }
+      throw error
+    }
+  }
   const [head, objects, refs] = await Promise.all([
-    stat(join(dirPath, 'HEAD')).catch(() => null),
-    stat(join(dirPath, 'objects')).catch(() => null),
-    stat(join(dirPath, 'refs')).catch(() => null)
+    markerStat(join(dirPath, 'HEAD')),
+    markerStat(join(dirPath, 'objects')),
+    markerStat(join(dirPath, 'refs'))
   ])
   return head?.isFile() === true && objects?.isDirectory() === true && refs?.isDirectory() === true
 }
@@ -58,7 +93,18 @@ export async function scanNestedRepos(args: {
     joinPath: join,
     basename,
     hasGitMarker,
-    isSelectedPathGitRepo: async (path: string) => isGitRepo(path) || (await hasGitMarker(path))
+    hasJjMarker,
+    isSelectedPathGitRepo: async (path: string) => {
+      await awaitWindowsHostGitEnvironmentReady({ cwd: path })
+      return isGitRepo(path) || (await hasGitMarker(path))
+    },
+    isSelectedPathJjRepo: async (path: string) => {
+      const marker = await probeLocalJjMarker(path)
+      if (marker.kind === 'unavailable') {
+        throw new Error(marker.error)
+      }
+      return marker.kind === 'present'
+    }
   }
   const buildResult = (selectedPathKind: NestedRepoScanResult['selectedPathKind']) => ({
     selectedPath: args.path,
@@ -83,6 +129,9 @@ export async function scanNestedRepos(args: {
     args.onProgress?.(buildResult('non_git_folder'))
   }
 
+  if (await filesystem.isSelectedPathJjRepo?.(args.path)) {
+    return buildResult('git_repo')
+  }
   if (await filesystem.isSelectedPathGitRepo(args.path)) {
     return buildResult('git_repo')
   }
@@ -154,7 +203,8 @@ export async function scanNestedRepos(args: {
       const childPath = filesystem.joinPath(currentFolder.path, name)
       // Why: broad scans should use cheap filesystem markers instead of
       // spawning Git for every candidate directory, especially over SSH.
-      const childHasGitMarker = await filesystem.hasGitMarker(childPath)
+      const childHasJjMarker = (await filesystem.hasJjMarker?.(childPath)) === true
+      const childHasGitMarker = childHasJjMarker || (await filesystem.hasGitMarker(childPath))
       if (noteAbort()) {
         break
       }
@@ -162,7 +212,8 @@ export async function scanNestedRepos(args: {
         repos.push({
           path: childPath,
           displayName: filesystem.basename(childPath),
-          depth: currentFolder.depth + 1
+          depth: currentFolder.depth + 1,
+          ...(childHasJjMarker ? { kind: 'jj' as const } : { kind: 'git' as const })
         })
         emitProgress()
         // Project Groups organize sibling repos; nested repos stay hidden until a

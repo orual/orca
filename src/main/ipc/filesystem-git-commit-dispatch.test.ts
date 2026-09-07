@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   handlers,
   store,
+  REPO_PATH,
   WORKTREE_FEATURE_PATH,
   commitChangesMock,
   bulkDiscardChangesMock,
@@ -98,6 +99,23 @@ describe('registerFilesystemHandlers', () => {
     ).resolves.toEqual({ success: false, error: 'hook failed' })
   })
 
+  it('rejects jj git:commit before invoking local Git', async () => {
+    const jjStore = {
+      ...store,
+      getRepos: () => [{ ...store.getRepos()[0], kind: 'jj' as const }]
+    }
+    registerFilesystemHandlers(jjStore as never)
+
+    await expect(
+      handlers.get('git:commit')!(null, {
+        worktreePath: REPO_PATH,
+        message: 'feat: jj commit'
+      })
+    ).rejects.toThrow('unsupported_repo_kind')
+
+    expect(commitChangesMock).not.toHaveBeenCalled()
+  })
+
   it('routes ssh git:commit through the SSH provider instead of local commitChanges', async () => {
     const sshCommitMock = vi.fn().mockResolvedValue({ success: true })
     getSshGitProviderMock.mockReturnValue({ commit: sshCommitMock })
@@ -114,6 +132,34 @@ describe('registerFilesystemHandlers', () => {
 
     expect(sshCommitMock).toHaveBeenCalledWith('/remote/repo', 'feat: remote commit')
     expect(commitChangesMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a known remote jj git:commit before SSH provider lookup', async () => {
+    const sshCommitMock = vi.fn().mockResolvedValue({ success: true })
+    getSshGitProviderMock.mockReturnValue({ commit: sshCommitMock })
+    const jjStore = {
+      ...store,
+      getRepos: () => [
+        {
+          ...store.getRepos()[0],
+          path: '/remote/repo',
+          connectionId: 'conn-1',
+          kind: 'jj' as const
+        }
+      ]
+    }
+    registerFilesystemHandlers(jjStore as never)
+
+    await expect(
+      handlers.get('git:commit')!(null, {
+        worktreePath: '/remote/repo',
+        message: 'feat: jj remote commit',
+        connectionId: 'conn-1'
+      })
+    ).rejects.toThrow('unsupported_repo_kind')
+
+    expect(getSshGitProviderMock).not.toHaveBeenCalled()
+    expect(sshCommitMock).not.toHaveBeenCalled()
   })
 
   it('routes ssh git:remoteCommitUrl through the SSH provider', async () => {

@@ -19,6 +19,8 @@ import { useMobilePrSidebarController } from '../session/use-mobile-pr-sidebar-c
 import { prSidebarDetailsNeedFetch } from '../session/mobile-pr-sidebar-state'
 import { MobilePrViewPanelBody } from '../components/pr-sidebar/MobilePrViewPanel'
 import { openMobilePrUrl } from '../components/mobile-pr-url'
+import { useMobileSourceControlProvider } from './use-mobile-source-control-provider'
+import { MobileJjSourceControlPanel } from './MobileJjSourceControlPanel'
 
 export type MobileSourceControlPanelProps = {
   hostId: string
@@ -34,7 +36,7 @@ export type MobileSourceControlPanelProps = {
   onOpenedFileDiff?: (relativePath: string) => void
 }
 
-export function MobileSourceControlPanel({
+function MobileGitSourceControlPanel({
   hostId,
   worktreeId,
   name = '',
@@ -348,4 +350,37 @@ export function MobileSourceControlPanel({
       <MobileSourceControlModals state={state} actionSheetActions={actionSheetActions} />
     </View>
   )
+}
+
+export function MobileSourceControlPanel(props: MobileSourceControlPanelProps) {
+  const { provider, providerState, retry } = useMobileSourceControlProvider(
+    props.hostId,
+    props.worktreeId
+  )
+  if (provider === 'jj') {
+    return (
+      <MobileJjSourceControlPanel
+        hostId={props.hostId}
+        worktreeId={props.worktreeId}
+        name={props.name}
+        onRequestClose={props.onRequestClose}
+      />
+    )
+  }
+  if (provider === null) {
+    return (
+      <View style={styles.container}>
+        {providerState.kind === 'error' ? (
+          <View style={styles.state}>
+            <Text style={styles.stateTitle}>Unable to Identify Workspace</Text>
+            <Text style={styles.stateText}>{providerState.message}</Text>
+            <Pressable style={styles.retryButton} onPress={retry}>
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    )
+  }
+  return <MobileGitSourceControlPanel {...props} />
 }

@@ -6,7 +6,7 @@ import {
   REPO_SEARCH_REFS_DEFAULT_LIMIT,
   isRepoSearchRefsRequestLimit
 } from '../../../shared/repo-search-limits'
-import { isFolderRepo } from '../../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../../shared/repo-kind'
 import { getRepoExecutionHostId, type ExecutionHostId } from '../../../shared/execution-host'
 import {
   getBaseRefDefault,
@@ -31,8 +31,8 @@ export function registerBaseRefQueryHandlers(store: Store): void {
       args: { repoId: string; hostId?: ExecutionHostId }
     ): Promise<BaseRefDefaultResult> => {
       const repo = getRepoForExecutionHost(store, args.repoId, args.hostId)
-      if (!repo || isFolderRepo(repo)) {
-        // Why: folder repos have no git state for a base ref; return null + 0 so the renderer skips a fabricated default.
+      if (!repo || isFolderRepo(repo) || !isGitRepoKind(repo)) {
+        // Why: folder and jj repos have no Git state for a base ref; return null + 0 so the renderer skips a fabricated default.
         return { defaultBaseRef: null, remoteCount: 0 }
       }
       // Why: remote repos need the relay to resolve symbolic-ref where the git data lives.
@@ -113,7 +113,7 @@ async function searchBaseRefDetailsForRepo(
   args: { repoId: string; query: string; limit?: number; hostId?: ExecutionHostId }
 ): Promise<BaseRefSearchResult[]> {
   const repo = getRepoForExecutionHost(store, args.repoId, args.hostId)
-  if (!repo || isFolderRepo(repo)) {
+  if (!repo || isFolderRepo(repo) || !isGitRepoKind(repo)) {
     return []
   }
   const requestedLimit = args.limit ?? REPO_SEARCH_REFS_DEFAULT_LIMIT

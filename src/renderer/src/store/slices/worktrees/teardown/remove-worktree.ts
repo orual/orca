@@ -2,11 +2,8 @@ import type { WorktreeSlice } from '../../worktree-helpers'
 import type { WorktreeSliceGet, WorktreeSliceSet } from '../listing/worktree-slice-types'
 import type { RemoveWorktreeResult } from '../../../../../../shared/worktree/create-types'
 import { getRepoIdFromWorktreeId } from '../../worktree-helpers'
-import { parseExecutionHostId } from '../../../../../../shared/execution-host'
 import { ensureHooksConfirmed } from '@/lib/ensure-hooks-confirmed'
 import { getActiveRuntimeTarget } from '../../../../runtime/runtime-rpc-client'
-import { forgetHugeRepoWarningDismissalsForWorktrees } from '@/lib/source-control-huge-repo-warning-dismissals'
-import { showPreservedBranchToast } from '@/components/sidebar/preserved-branch-toast'
 import {
   resolveWorktreeOperationRouteResult,
   resolveWorktreeOperationRouteResultForHost,
@@ -25,19 +22,13 @@ import {
   getLockedWorktreeRemovalReason,
   isLockedWorktreeRemovalError
 } from '../../../../../../shared/worktree/removal'
-import { preservedBranchCleanupKey } from '../../../../../../shared/preserved-branch-cleanup'
 import { composeWorktreeHostIdentity } from '../../../../../../shared/worktree/host-qualified-identity'
-import { pruneHostedReviewLinkMutationGenerations } from '../metadata/hosted-review-link-mutation'
-import { rememberAuthoritativelyRemovedWorktrees } from '../listing/authoritative-worktree-removal-memory'
-import { preservedBranchRuntimeTargetByCleanupKey } from './preserved-branch-cleanup-target'
 import {
   isRuntimeRepoNotFoundError,
   isRuntimeSelectorNotFoundError
 } from '../listing/runtime-worktree-rpc-errors'
-import { recordRemovedWorktreeSnapshotPrune } from './removed-worktree-snapshot-prune'
-import { clearSessionCommitDraftForWorktree } from '@/lib/source-control-commit-draft-session'
 import { dispatchWorktreeRemoval } from './dispatch-worktree-removal'
-import { tearDownRemovedWorktreeRendererState } from './removed-worktree-renderer-teardown'
+import { completeRemovedWorktree } from './complete-remove-worktree'
 
 export function createRemoveWorktree(
   set: WorktreeSliceSet,
@@ -174,12 +165,20 @@ export function createRemoveWorktree(
         }
       }
 
-      if (!snapshotPruneHandledByLocalMain) {
-        await recordRemovedWorktreeSnapshotPrune({
-          worktreeId,
-          hostId,
-          snapshotPruneBatchId: options?.snapshotPruneBatchId
-        })
+      if (removalResult?.jjCleanupPending) {
+        // JJ forget succeeded but directory cleanup did not; retain metadata and renderer state
+        // until the user explicitly confirms the proof-bound cleanup-only retry.
+        set((s) => ({
+          deleteStateByWorktreeId: {
+            ...s.deleteStateByWorktreeId,
+            [deleteStateKey]: {
+              ...s.deleteStateByWorktreeId[deleteStateKey],
+              isDeleting: false,
+              ...(requiredExecutionHostId ? { executionHostId: requiredExecutionHostId } : {})
+            }
+          }
+        }))
+        return { ok: true as const, jjCleanupPending: removalResult.jjCleanupPending }
       }
 
       // Why (STA-4343): another host still owns this id, so the shared renderer
@@ -220,78 +219,20 @@ export function createRemoveWorktree(
         }
       }
 
-      // Why: invalidate stale probes once deletion is authoritative, so an old toast can't mutate a same-path replacement.
-      forgetHugeRepoWarningDismissalsForWorktrees([worktreeId])
-      // Why: forget-local is legal while the host is unreachable, so record the removal here too — otherwise an
-      // in-flight metadata read that snapshotted this row re-appends it, and disconnected polls never drop it.
-      if (hostId && parseExecutionHostId(hostId)?.kind === 'ssh') {
-        rememberAuthoritativelyRemovedWorktrees(hostId, [worktreeId])
-      }
-
-      const worktreeDisplayName = worktreeBeforeRemoval?.displayName?.trim()
-      if (worktreeDisplayName) {
-        try {
-          await window.api.automations?.snapshotWorkspaceName?.({
-            workspaceId: worktreeId,
-            displayName: worktreeDisplayName
-          })
-        } catch (error) {
-          // Why: snapshotting automation labels is best-effort; a stale preload/test harness must not block removal.
-          console.warn('Failed to snapshot automation workspace name:', error)
-        }
-      }
-
-      await tearDownRemovedWorktreeRendererState({
+      return completeRemovedWorktree({
         set,
         get,
         worktreeId,
         hostId,
         requiredExecutionHostId,
-        terminalPtyIdsBeforeRemoval
+        removalRoute,
+        target,
+        worktreeBeforeRemoval,
+        terminalPtyIdsBeforeRemoval,
+        removalResult,
+        snapshotPruneHandledByLocalMain,
+        options
       })
-      // Why: Source Control may be unmounted during deletion, so it can't be the only stale-draft cleanup path.
-      clearSessionCommitDraftForWorktree(worktreeId)
-      const preservedBranch = removalResult?.preservedBranch
-      const cleanup = preservedBranch
-        ? {
-            worktreeId,
-            branchName: preservedBranch.branchName,
-            expectedHead: preservedBranch.head,
-            ...(hostId ? { hostId } : {}),
-            ...(removalRoute?.runtimeEnvironmentId
-              ? { runtimeEnvironmentId: removalRoute.runtimeEnvironmentId }
-              : {})
-          }
-        : null
-      if (preservedBranch) {
-        preservedBranchRuntimeTargetByCleanupKey.set(preservedBranchCleanupKey(cleanup!), {
-          cleanup: cleanup!,
-          target
-        })
-      }
-      if (preservedBranch && options?.suppressPreservedBranchToast !== true) {
-        showPreservedBranchToast(removalResult, worktreeBeforeRemoval, (branch, expectedHead) => {
-          void get().forceDeletePreservedBranch(worktreeId, branch, expectedHead, {
-            ...(hostId ? { hostId } : {}),
-            ...(removalRoute?.runtimeEnvironmentId
-              ? { runtimeEnvironmentId: removalRoute.runtimeEnvironmentId }
-              : {})
-          })
-        })
-      }
-      pruneHostedReviewLinkMutationGenerations([worktreeId])
-      return preservedBranch && cleanup
-        ? {
-            ok: true as const,
-            preservedBranch: {
-              ...preservedBranch,
-              ...(cleanup.hostId ? { hostId: cleanup.hostId } : {}),
-              ...(cleanup.runtimeEnvironmentId
-                ? { runtimeEnvironmentId: cleanup.runtimeEnvironmentId }
-                : {})
-            }
-          }
-        : { ok: true as const }
     } catch (err) {
       // Why: git refusing a non-force delete for dirty/untracked files is a handled user decision, not an app error.
       console.warn('Failed to remove worktree:', err)

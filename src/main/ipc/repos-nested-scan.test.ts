@@ -64,7 +64,7 @@ describe('projectGroups IPC validation', () => {
       if (path === '/srv/platform/api/.git') {
         return { type: 'directory', size: 0, mtime: 0 }
       }
-      throw new Error('not found')
+      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
     })
     mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) =>
       dirPath === '/srv/platform' ? [{ name: 'api', isDirectory: true, isSymlink: false }] : []
@@ -91,7 +91,7 @@ describe('projectGroups IPC validation', () => {
       if (path === '/srv/platform/mirror.git/objects' || path === '/srv/platform/mirror.git/refs') {
         return { type: 'directory', size: 0, mtime: 0 }
       }
-      throw new Error('not found')
+      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
     })
     mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) =>
       dirPath === '/srv/platform'
@@ -117,7 +117,7 @@ describe('projectGroups IPC validation', () => {
       if (path === '/srv/platform/api/.git' || path === '/srv/platform/linked-outside/.git') {
         return { type: 'directory', size: 0, mtime: 0 }
       }
-      throw new Error('not found')
+      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
     })
     mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) =>
       dirPath === '/srv/platform'
@@ -155,7 +155,7 @@ describe('projectGroups IPC validation', () => {
       if (path.endsWith('/.git') && gitRepos.has(repoPath)) {
         return { type: 'directory', size: 0, mtime: 0 }
       }
-      throw new Error('not found')
+      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
     })
     mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) => {
       if (dirPath === '/srv/platform') {
@@ -199,7 +199,7 @@ describe('projectGroups IPC validation', () => {
       if (path === '/srv/platform/api/.git' || path === '/srv/platform/web/.git') {
         return { type: 'directory', size: 0, mtime: 0 }
       }
-      throw new Error('not found')
+      throw Object.assign(new Error('not found'), { code: 'ENOENT' })
     })
     mockFilesystemProvider.readDir.mockImplementation(async (dirPath: string) =>
       dirPath === '/srv/platform'

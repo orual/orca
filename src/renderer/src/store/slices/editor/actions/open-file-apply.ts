@@ -111,6 +111,7 @@ export function applyOpenFileToState(
     const needsExistingUpdate =
       existing.mode !== file.mode ||
       existing.diffSource !== file.diffSource ||
+      existing.jjParentRevision !== file.jjParentRevision ||
       existing.branchCompare?.compareVersion !== file.branchCompare?.compareVersion ||
       existing.commitCompare?.compareVersion !== file.commitCompare?.compareVersion ||
       existing.conflict?.kind !== file.conflict?.kind ||
@@ -144,6 +145,7 @@ export function applyOpenFileToState(
                 : f.operationProvenance,
               mode: file.mode,
               diffSource: file.diffSource,
+              jjParentRevision: file.jjParentRevision,
               branchCompare: file.branchCompare,
               commitCompare: file.commitCompare,
               branchOldPath: file.branchOldPath,

@@ -5,7 +5,7 @@ import type {
 import type { GitPushTarget } from '../../shared/worktree/types'
 import { preservedBranchCleanupScopeKey } from '../../shared/preserved-branch-cleanup'
 import { parseExecutionHostId, type ExecutionHostId } from '../../shared/execution-host'
-import { isFolderRepo } from '../../shared/repo-kind'
+import { isFolderRepo, isGitRepoKind } from '../../shared/repo-kind'
 import { forceDeleteLocalBranch } from '../git/worktree'
 import { gitExecFileAsync } from '../git/runner'
 import {
@@ -121,6 +121,9 @@ export class RuntimePreservedBranchCleanup {
     }
     if (isFolderRepo(repo)) {
       throw new Error('Folder workspaces do not have local Git branches.')
+    }
+    if (!isGitRepoKind(repo)) {
+      throw new Error('unsupported_repo_kind')
     }
 
     if (repo.connectionId) {

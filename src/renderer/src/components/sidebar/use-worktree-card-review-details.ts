@@ -35,9 +35,13 @@ export function useWorktreeCardReviewDetails({
   // Why: project groups gate folder workspaces, so folder paths stay hidden from identity surfaces until that capability exists.
   const hasProjectGroups = projectGroups.length > 0
   const branchIdentityDisplay = !isFolder && branch.length > 0 ? branch : undefined
+  // JJ workspaces intentionally leave Git branch/head empty; keep their provider identity separate
+  // so review/cache lookups never treat a workspace pointer as a Git branch.
+  const jjWorkspaceDisplay =
+    !isFolder && worktree.jjWorkspace?.name?.trim() ? worktree.jjWorkspace.name.trim() : undefined
   const folderPathIdentityDisplay =
     isFolder && hasProjectGroups && worktree.path.trim().length > 0 ? worktree.path : undefined
-  const identityDisplay = branchIdentityDisplay ?? folderPathIdentityDisplay
+  const identityDisplay = branchIdentityDisplay ?? jjWorkspaceDisplay ?? folderPathIdentityDisplay
   const hasPathIdentityEnabled = cardProps.includes('branch')
   const showIdentityInNewCard = newCardStyle && hasPathIdentityEnabled && Boolean(identityDisplay)
   const folderMetaRowContent = newCardStyle

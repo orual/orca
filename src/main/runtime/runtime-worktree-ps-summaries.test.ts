@@ -34,4 +34,37 @@ describe('buildRuntimeWorktreePsSummaries', () => {
 
     expect(summary?.hostId).toBe('ssh:persisted-host')
   })
+
+  it('preserves jj identity and discriminates jj summaries without a Git branch', () => {
+    const jjWorkspace = { name: 'feature', root: '/workspace/feature', rootResolved: true }
+    const worktree = {
+      id: 'repo-jj::/workspace/feature',
+      repoId: 'repo-jj',
+      path: '/workspace/feature',
+      branch: '',
+      jjWorkspace,
+      isArchived: false,
+      isMainWorktree: false,
+      parentWorktreeId: null,
+      childWorktreeIds: [],
+      lineage: null,
+      lastActivityAt: 0,
+      git: { path: '/workspace/feature', branch: '', jjWorkspace }
+    } as unknown as ResolvedWorktree
+    const store = {
+      getRepos: () => [],
+      getWorktreeMeta: () => undefined,
+      getAllWorktreeMeta: () => ({}),
+      getFolderWorkspaces: () => [],
+      getProjectGroups: () => []
+    } as unknown as RuntimeStore
+
+    const summary = buildRuntimeWorktreePsSummaries({
+      store,
+      resolvedWorktrees: [worktree],
+      platformByRepoId: new Map()
+    }).get(worktree.id)
+
+    expect(summary).toMatchObject({ workspaceKind: 'jj', jjWorkspace, branch: '' })
+  })
 })

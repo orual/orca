@@ -84,6 +84,7 @@ export function isDetectedWorktreeListResult(value: unknown): value is DetectedW
     typeof result.repoId === 'string' &&
     typeof result.authoritative === 'boolean' &&
     (result.source === 'git' ||
+      result.source === 'jj' ||
       result.source === 'metadata-fallback' ||
       result.source === 'session-fallback') &&
     Array.isArray(result.worktrees)

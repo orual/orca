@@ -9,6 +9,7 @@ import { PickerModal } from '../components/PickerModal'
 import { colors } from '../theme/mobile-theme'
 import { hostNewWorktreeSessionRoute } from '../host-route-action-state'
 import { getWorktreeRowIdentity } from '../worktree/worktree-host-row-identity'
+import { getJjRemovalRowIdentity } from './jj-worktree-removal'
 import {
   WORKSPACE_GROUP_OPTIONS as GROUP_OPTIONS,
   WORKSPACE_SORT_OPTIONS as SORT_OPTIONS
@@ -16,6 +17,66 @@ import {
 import { isWorktreePinned } from '../worktree/workspace-list-sections'
 import { hostScreenStyles as styles } from './host-screen-styles'
 import type { HostScreenController } from './use-host-screen-controller'
+
+function JjRemovalConfirmation({ controller }: { controller: HostScreenController }) {
+  const { actions, state } = controller
+  const confirmation = state.confirmJjRemoval
+  if (!confirmation) {
+    return null
+  }
+  const name =
+    confirmation.worktree.displayName ||
+    confirmation.worktree.jjWorkspace?.name ||
+    confirmation.worktree.repo
+  const isCleanup = confirmation.mode === 'cleanup-only'
+  const isDelete = confirmation.mode === 'forget-and-delete'
+  const title = isCleanup
+    ? 'Resume JJ cleanup?'
+    : isDelete
+      ? 'Forget and delete JJ directory?'
+      : 'Forget JJ registration?'
+  const message = isCleanup
+    ? `Re-check the retained host proof and delete the directory for "${name}". No JJ registration will be recreated.`
+    : isDelete
+      ? `Forget "${name}" from JJ, then delete its directory on the execution host. This cannot be undone.`
+      : `Forget "${name}" from JJ but keep its directory on the execution host.`
+  return (
+    <View>
+      <View style={styles.confirmContent}>
+        <Text style={styles.confirmTitle}>{title}</Text>
+        <Text style={styles.confirmMessage}>{message}</Text>
+      </View>
+      <View style={styles.confirmButtons}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.confirmBtn,
+            styles.confirmBtnCancel,
+            pressed && styles.confirmBtnPressed
+          ]}
+          onPress={() => state.setConfirmJjRemoval(null)}
+        >
+          <Text style={styles.confirmBtnCancelText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.confirmBtn,
+            styles.confirmBtnDestructive,
+            pressed && styles.confirmBtnPressed
+          ]}
+          onPress={() => {
+            void actions.handleJjRemoval(confirmation.worktree, confirmation.mode)
+            state.setConfirmJjRemoval(null)
+            state.setActionTarget(null)
+          }}
+        >
+          <Text style={styles.confirmBtnDestructiveText}>
+            {isDelete || isCleanup ? 'Delete' : 'Forget'}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  )
+}
 
 export function HostScreenOverlays({ controller }: { controller: HostScreenController }) {
   const {
@@ -30,6 +91,17 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
     state
   } = controller
   const actionTarget = state.actionTarget
+  const actionTargetIdentity = actionTarget
+    ? getJjRemovalRowIdentity(actionTarget, state.repoHostIdByRepoId)
+    : null
+  const pendingJjCleanup = actionTargetIdentity
+    ? state.pendingJjCleanupByIdentity.get(actionTargetIdentity)
+    : undefined
+  const jjRemovalInFlight = actionTargetIdentity === state.jjRemovalInFlight
+  const jjRemovalBlocked =
+    actionTargetIdentity !== null &&
+    state.jjRemovalNotice?.identity === actionTargetIdentity &&
+    state.jjRemovalNotice.kind === 'uncertain'
 
   return (
     <>
@@ -105,10 +177,13 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
         visible={actionTarget != null}
         onClose={() => {
           state.setConfirmDelete(null)
+          state.setConfirmJjRemoval(null)
           state.setActionTarget(null)
         }}
       >
-        {state.confirmDelete ? (
+        {state.confirmJjRemoval ? (
+          <JjRemovalConfirmation controller={controller} />
+        ) : state.confirmDelete ? (
           <View>
             <View style={styles.confirmContent}>
               <Text style={styles.confirmTitle}>Delete Worktree</Text>
@@ -185,11 +260,52 @@ export function HostScreenOverlays({ controller }: { controller: HostScreenContr
                         state.setActionTarget(null)
                       }
                     },
-                    {
-                      label: 'Delete',
-                      destructive: true,
-                      onPress: () => state.setConfirmDelete(actionTarget)
-                    }
+                    ...(actionTarget.workspaceKind === 'jj'
+                      ? [
+                          {
+                            label: 'Forget registration',
+                            disabled: jjRemovalInFlight || jjRemovalBlocked,
+                            loading: jjRemovalInFlight,
+                            hint: 'Keep the workspace directory on the host',
+                            onPress: () =>
+                              state.setConfirmJjRemoval({ worktree: actionTarget, mode: 'forget' })
+                          },
+                          {
+                            label: 'Forget and delete directory',
+                            disabled: jjRemovalInFlight || jjRemovalBlocked,
+                            loading: jjRemovalInFlight,
+                            hint: 'Forget JJ registration, then delete the directory',
+                            destructive: true,
+                            onPress: () =>
+                              state.setConfirmJjRemoval({
+                                worktree: actionTarget,
+                                mode: 'forget-and-delete'
+                              })
+                          },
+                          ...(pendingJjCleanup
+                            ? [
+                                {
+                                  label: 'Resume cleanup',
+                                  disabled: jjRemovalInFlight,
+                                  loading: jjRemovalInFlight,
+                                  hint: 'Re-check the retained host proof before deleting',
+                                  destructive: true,
+                                  onPress: () =>
+                                    state.setConfirmJjRemoval({
+                                      worktree: actionTarget,
+                                      mode: 'cleanup-only'
+                                    })
+                                }
+                              ]
+                            : [])
+                        ]
+                      : [
+                          {
+                            label: 'Delete',
+                            destructive: true,
+                            onPress: () => state.setConfirmDelete(actionTarget)
+                          }
+                        ])
                   ]
                 : []
             }

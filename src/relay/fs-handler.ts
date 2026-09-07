@@ -22,7 +22,8 @@ import {
   deleteRelayPath,
   renameRelayPath,
   renameRelayPathNoClobber,
-  writeRelayFile
+  writeRelayFile,
+  writeRelayPrivateFile
 } from './fs-path-mutation-requests'
 import { buildExcludePathPrefixes } from '../shared/quick-open-filter'
 import { resolveQuickOpenResultLimit } from '../shared/quick-open-listing-limits'
@@ -87,6 +88,7 @@ export class FsHandler {
     )
     this.dispatcher.onRequest('fs.readTerminalArtifact', (p) => this.readTerminalArtifact(p))
     this.dispatcher.onRequest('fs.tempDir', () => this.tempDir())
+    this.dispatcher.onRequest('fs.writePrivateFile', (p) => writeRelayPrivateFile(p))
     this.dispatcher.onRequest('fs.writeFile', (p) => writeRelayFile(p))
     this.dispatcher.onRequest('fs.writeTerminalArtifact', (p) => this.writeTerminalArtifact(p))
     this.dispatcher.onRequest('fs.stat', (p) => statRelayPath(p))

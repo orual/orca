@@ -79,3 +79,58 @@ export async function prepareRuntimeLocalWorktreeSetup(args: {
     didStartInProcessSetupHook
   }
 }
+
+export function createRuntimeStartupTerminal(args: {
+  didSpawnStartup: boolean
+  startupTerminalHandle: string | null
+  startupTerminalTabId: string | null
+  startupTerminalPaneKey: string | null
+  startupTerminalPtyId: string | null
+}): CreateWorktreeResult['startupTerminal'] | undefined {
+  if (!args.didSpawnStartup || !args.startupTerminalHandle) {
+    return undefined
+  }
+  return {
+    spawned: true,
+    handle: args.startupTerminalHandle,
+    ...(args.startupTerminalTabId ? { tabId: args.startupTerminalTabId } : {}),
+    ...(args.startupTerminalPaneKey ? { paneKey: args.startupTerminalPaneKey } : {}),
+    ...(args.startupTerminalPtyId ? { ptyId: args.startupTerminalPtyId } : {}),
+    surface: 'background'
+  }
+}
+
+export function createRuntimeSetupReceipt(args: {
+  effectiveDecision: 'run' | 'skip' | 'inherit'
+  hookFound: boolean
+  setup?: CreateWorktreeResult['setup']
+  shouldRunSetup: boolean
+  didSpawnSetup: boolean
+  didStartInProcessSetupHook: boolean
+  setupTerminalHandle: string | null
+}): NonNullable<CreateWorktreeResult['setupReceipt']> {
+  const {
+    effectiveDecision,
+    hookFound,
+    setup,
+    shouldRunSetup,
+    didSpawnSetup,
+    didStartInProcessSetupHook,
+    setupTerminalHandle
+  } = args
+  return {
+    requested: effectiveDecision,
+    hookFound,
+    startupPolicy: setup?.waitForAgentStartup ? 'wait-for-setup' : 'start-immediately',
+    state: !hookFound
+      ? 'not_configured'
+      : effectiveDecision === 'skip' || !shouldRunSetup
+        ? 'skipped'
+        : // Why: the in-process hook is already executing, so reporting
+          // spawn_failed would strand callers that retry on it.
+          didSpawnSetup || didStartInProcessSetupHook
+          ? 'running'
+          : 'spawn_failed',
+    ...(setupTerminalHandle ? { terminalHandle: setupTerminalHandle } : {})
+  }
+}

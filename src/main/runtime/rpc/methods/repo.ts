@@ -8,6 +8,7 @@ import {
   projectRepoResultVisibilityForClient,
   projectRepoVisibilityForClient
 } from '../repo-visibility-projection'
+import { projectJjReposForClient } from '../repo-jj-projection'
 
 const RepoSelector = z.object({
   repo: requiredString('Missing repo selector')
@@ -15,7 +16,7 @@ const RepoSelector = z.object({
 
 const RepoPath = z.object({
   path: requiredString('Missing repo path'),
-  kind: z.enum(['git', 'folder']).optional(),
+  kind: z.enum(['git', 'folder', 'jj']).optional(),
   displayName: OptionalString
 })
 
@@ -116,9 +117,9 @@ export const REPO_METHODS: RpcMethod[] = [
     handler: (_params, context) => {
       context.runtime.enrichMissingRepoGitRemoteIdentities?.()
       return {
-        repos: context.runtime
-          .listRepos()
-          .map((repo) => projectRepoVisibilityForClient(repo, context))
+        repos: projectJjReposForClient(context.runtime.listRepos(), context).map((repo) =>
+          projectRepoVisibilityForClient(repo, context)
+        )
       }
     }
   }),

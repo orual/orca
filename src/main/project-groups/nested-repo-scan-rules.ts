@@ -12,7 +12,9 @@ export type NestedRepoScanFilesystem = {
   joinPath: (parentPath: string, childName: string) => string
   basename: (path: string) => string
   hasGitMarker: (path: string) => Promise<boolean> | boolean
+  hasJjMarker?: (path: string) => Promise<boolean> | boolean
   isSelectedPathGitRepo: (path: string) => Promise<boolean> | boolean
+  isSelectedPathJjRepo?: (path: string) => Promise<boolean> | boolean
 }
 
 type IgnoreRule = {

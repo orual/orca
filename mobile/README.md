@@ -17,6 +17,65 @@ Unless a command says otherwise, run mobile app commands from the `mobile/` dire
 - Expo Go on your phone, or a development client build when native modules are needed
 - Phone and desktop on the same LAN when testing a physical phone
 
+## Build a standalone Android APK with Nix
+
+On an **x86-64 Linux build host**, enter the Android shell from the repository root:
+
+```bash
+nix develop .#android
+cd mobile
+pnpm install --frozen-lockfile
+pnpm exec expo prebuild --platform android --no-install
+cd android
+NODE_ENV=production ./gradlew assembleRelease --no-daemon --max-workers=4
+```
+
+The shell provides Node 24, pnpm, JDK 17, Android SDK 36, build-tools 36.0.0 and
+35.0.0 (required by native dependencies), NDK 27.1.12297006, and CMake 3.22.1. It accepts the Android SDK licence and uses
+Nix-patched Android tools, including a Gradle override for `aapt2`. The first build
+downloads several GB and requires network access for npm and Gradle dependencies.
+The default desktop shell is unchanged. ARM Linux build hosts are not supported
+by this shell; the build host architecture does not restrict the APK's target ABIs.
+
+The APK is `mobile/android/app/build/outputs/apk/release/app-release.apk` relative
+to the repository root. This release build bundles JavaScript and does not need
+Metro or Expo Go running. Re-run the build after changing app code, and re-run
+prebuild after changing native dependencies or Expo configuration. The generated
+`android/` directory is ignored by Git.
+
+The generated Expo project signs release builds with its **debug keystore**. This
+is suitable for personal sideloading, not publishing or secure distribution. It
+retains the `com.stably.orca.mobile` application ID. Android will reject an update
+if an installed copy uses a different signing key; uninstalling that copy removes
+its local app data. Keep the signing key consistent for subsequent updates.
+
+Copy the APK to your phone and open it to install, or enable USB debugging,
+authorize your computer, and run this from the repository root inside the shell:
+
+```bash
+adb install -r mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+Pair the installed app with your desktop using the instructions below.
+
+## Android emulator with Nix
+
+The `.#android` shell also includes the emulator and an API 36 Google APIs x86-64
+system image. Hardware acceleration requires read/write access to `/dev/kvm`.
+From the repository root:
+
+```bash
+nix develop .#android
+emulator -accel-check
+avdmanager create avd --name orca-api-36 --package 'system-images;android-36;google_apis;x86_64' --device pixel_7
+QT_QPA_PLATFORM=xcb emulator -avd orca-api-36 -gpu software
+```
+
+Create the AVD only once; its writable state lives outside the Nix store. In a
+second Android shell, install the APK using `adb install -r` as above. For a
+headless emulator, add `-no-window -no-audio` to the emulator command. Pair with
+the desktop endpoint `ws://10.0.2.2:6768`, not emulator-local `localhost`.
+
 ## Start Desktop Orca
 
 From the repository root:

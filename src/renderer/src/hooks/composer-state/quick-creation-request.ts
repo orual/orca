@@ -16,6 +16,8 @@ export type QuickCreationRequestInput = {
   linkedWorkItem: LinkedWorkItemSummary | null
   workspaceRunContext: WorktreeCreationRequest['workspaceRunContext']
   workspaceName: string
+  workspaceKind?: 'jj'
+  jjStartRevision?: string
   nameWasGenerated: boolean
   displayName: string | undefined
   displayNameKind?: 'generated' | 'user'
@@ -63,6 +65,8 @@ export function buildQuickCreationRequest(
     linkedTaskSourceContext: input.taskSourceContext,
     ...(input.workspaceRunContext ? { workspaceRunContext: input.workspaceRunContext } : {}),
     name: input.workspaceName,
+    ...(input.workspaceKind ? { workspaceKind: input.workspaceKind } : {}),
+    ...(input.jjStartRevision ? { jjStartRevision: input.jjStartRevision } : {}),
     ...(input.nameWasGenerated ? { nameWasGenerated: true } : {}),
     ...(input.displayName ? { displayName: input.displayName } : {}),
     ...(input.displayNameKind ? { displayNameKind: input.displayNameKind } : {}),
@@ -82,7 +86,7 @@ export function buildQuickCreationRequest(
     ...(input.telemetrySource ? { telemetrySource: input.telemetrySource } : {}),
     ...(input.linkedIssue != null ? { linkedIssue: input.linkedIssue } : {}),
     ...(input.linkedPR != null ? { linkedPR: input.linkedPR } : {}),
-    ...(input.pushTarget ? { pushTarget: input.pushTarget } : {}),
+    ...(input.selectedRepoIsGit && input.pushTarget ? { pushTarget: input.pushTarget } : {}),
     agent: input.agent,
     ...(input.agentLaunchRoute ? { agentLaunchRoute: input.agentLaunchRoute } : {}),
     ...(input.linkedLinearIssue ? { linkedLinearIssue: input.linkedLinearIssue } : {}),
@@ -92,7 +96,9 @@ export function buildQuickCreationRequest(
     ...(input.linkedLinearIssueOrganizationUrlKey !== undefined
       ? { linkedLinearIssueOrganizationUrlKey: input.linkedLinearIssueOrganizationUrlKey }
       : {}),
-    ...(input.branchNameOverride ? { branchNameOverride: input.branchNameOverride } : {}),
+    ...(input.selectedRepoIsGit && input.branchNameOverride
+      ? { branchNameOverride: input.branchNameOverride }
+      : {}),
     ...(input.parentWorktreeId ? { parentWorktreeId: input.parentWorktreeId } : {}),
     ...(input.workspaceStatus ? { workspaceStatus: input.workspaceStatus } : {}),
     ...(input.includeGitLabLinks && input.linkedGitLabMR != null

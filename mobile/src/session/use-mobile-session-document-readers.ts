@@ -91,7 +91,8 @@ export function useMobileSessionDocumentReaders(scope: MobileSessionTabApplicati
         const doc = await resolveMobileFileTabDoc(client, {
           worktreeId,
           relativePath: tab.relativePath,
-          diffSource: tab.diffSource
+          diffSource: tab.diffSource,
+          jjParentRevision: tab.jjParentRevision
         })
         setFileDocs((prev) => new Map(prev).set(tab.id, doc))
       } catch (err) {
