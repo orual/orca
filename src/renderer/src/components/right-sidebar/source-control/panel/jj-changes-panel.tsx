@@ -83,7 +83,8 @@ export function JjChangesPanel({
     } else if (
       !draftEditedRef.current &&
       metadataIsCurrent &&
-      model.metadata?.description !== commitMessage
+      model.metadata !== null &&
+      model.metadata.description !== commitMessage
     ) {
       setCommitMessage(model.metadata.description)
     }

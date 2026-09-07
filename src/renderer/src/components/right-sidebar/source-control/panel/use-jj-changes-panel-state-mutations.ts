@@ -23,6 +23,7 @@ import type {
 } from './jj-changes-panel-state-types'
 import { RuntimeRpcCallError } from '@/runtime/runtime-rpc-client'
 
+type MutationInput = JjDescribeInput | JjBookmarkMutationInput
 type MutationResult = JjDescribeResult | JjBookmarkMutationResult
 
 type CommitMutationState = {

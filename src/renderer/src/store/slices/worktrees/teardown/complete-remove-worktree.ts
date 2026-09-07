@@ -33,7 +33,7 @@ export async function completeRemovedWorktree(args: {
   removalResult: RemoveWorktreeResult
   snapshotPruneHandledByLocalMain: boolean
   options: RemovalOptions | undefined
-}): Promise<RendererRemoveWorktreeResult> {
+}): Promise<{ ok: true } & RendererRemoveWorktreeResult> {
   const {
     set,
     get,

@@ -263,6 +263,21 @@ describe('JjChangesPanel commit surface', () => {
     expect(describe).toHaveBeenCalledWith({ expectedCommitId: 'commit-full-1', message: '' })
   })
 
+  it('retains the description while current workspace metadata is unavailable', () => {
+    renderPanel()
+    expect(textarea().value).toBe('Existing jj description')
+
+    mocks.model = createModel({ metadata: null, metadataStatus: 'loading' })
+    renderPanel()
+    expect(textarea().value).toBe('Existing jj description')
+
+    mocks.model = createModel({
+      metadata: { ...metadata, description: 'Refreshed description' }
+    })
+    renderPanel()
+    expect(textarea().value).toBe('Refreshed description')
+  })
+
   it('preserves a dirty description draft when polled metadata changes', () => {
     renderPanel()
     fireEvent.change(textarea(), { target: { value: 'Keep this draft' } })
